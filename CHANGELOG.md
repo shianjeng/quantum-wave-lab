@@ -3,6 +3,25 @@
 The version of the `qwave` package (pyproject.toml). The reference data in `reference/` belong to the
 version they were exported with; a port should name the version it is tested against.
 
+## Unreleased
+
+### Added
+- Browser version in `web/` (plain JavaScript, no build step): a port of the solver (float32,
+  absorber, Gross–Pitaevskii, merged half-steps, spectral/fd4 flux detector, `diagnose`, imaginary-time
+  ground state). The page draws walls with the mouse, launches packets, has six scenes (tunneling,
+  double slit, scattering, harmonic trap, BEC interference, empty box), shows the transmission live
+  and runs the checks. Available in English and Japanese.
+- `web/test/`: the browser solver reproduces `reference/` in float64 (~1e-13) and float32 (~1e-5);
+  run by CI.
+- GitHub Pages deployment (`.github/workflows/pages.yml`).
+- The page, refined:
+  - Scenes: 10 scenes with explanations (new: resonant tunneling, single slit, grating, quantum corral).
+    Their quoted numbers are re-measured by `web/test/scenes.test.mjs`.
+  - Views: a momentum view |φ(k)|², auto brightness, contour lines of smooth potentials and the V = ⟨E⟩ line.
+  - Measurement: an energy readout, a position measurement with wave-function collapse, and a chart with a legend that also shows the absorbed part.
+  - Drawing and sharing: undo/redo and straight walls; share links carrying the scene, parameters and drawings; PNG and video export.
+  - Cache-busting version parameters on the scripts.
+
 ## 0.3.0 — 2026-09-24
 
 ### Added

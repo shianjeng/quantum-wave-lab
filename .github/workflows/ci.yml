@@ -11,6 +11,17 @@ jobs:
       - run: pip install "ruff>=0.5"
       - run: ruff check .
 
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      # the browser solver must reproduce reference/ (float64 and float32)
+      - run: node --test
+        working-directory: web
+
   test:
     runs-on: ubuntu-latest
     strategy:

@@ -1,0 +1,9 @@
+{
+  "name": "quantum-wave-lab-web",
+  "private": true,
+  "type": "module",
+  "description": "Browser version of Quantum Wave Lab (static site, no build step)",
+  "scripts": {
+    "test": "node --test"
+  }
+}

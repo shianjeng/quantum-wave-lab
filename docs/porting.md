@@ -7,7 +7,7 @@
 
 ### Reference data
 
-`python export_reference.py` writes [`reference/`](../reference/README.md): five fixed cases (free packet, harmonic oscillator, sech² barrier with absorber and flux detectors, Gross–Pitaevskii soliton, 2D double slit with absorber). Each case stores the inputs as arrays and ψ, norm, energy and flux after 1, 100 and 1000 steps, together with the tolerances a float64 and a float32 port must meet. The binary layout and every convention a port must match (coordinates, FFT ordering, order of the factors, absorber, flux) are described in [reference/README.md](../reference/README.md). `tests/test_reference.py` checks that the Python implementation still reproduces the files. The reference data belong to qwave 0.3.0.
+`python export_reference.py` writes [`reference/`](../reference/README.md): five fixed cases (free packet, harmonic oscillator, sech² barrier with absorber and flux detectors, Gross–Pitaevskii soliton, 2D double slit with absorber). Each case stores the inputs as arrays and ψ, norm, energy and flux after 1, 100 and 1000 steps, together with the tolerances a float64 and a float32 port must meet. The binary layout and every convention a port must match (coordinates, FFT ordering, order of the factors, absorber, flux) are described in [reference/README.md](../reference/README.md). `tests/test_reference.py` checks that the Python implementation still reproduces the files. The reference data belong to qwave 0.3.0. The JavaScript port in [`web/`](../web/README.md) already passes them (`cd web && node --test`): float64 to ~10⁻¹³, float32 to ~10⁻⁵.
 
 ### Notes from the validation
 
@@ -27,7 +27,7 @@
 
 ### リファレンスデータ
 
-`python export_reference.py` は [`reference/`](../reference/README.md) に 5 つの固定ケースを出力します（自由粒子、調和振動子、吸収層と確率流検出器つきの sech² 障壁、グロス・ピタエフスキーのソリトン、吸収層つきの 2D 二重スリット）。各ケースには入力の配列と、1・100・1000 ステップ後の ψ・ノルム・エネルギー・確率流、そして float64 版と float32 版が満たすべき許容誤差が入っています。バイナリ形式と、移植版が合わせるべき約束事（座標、FFT の並び、因子の順序、吸収層、確率流）は [reference/README.md](../reference/README.md) にまとめています。Python 実装がこれを再現し続けていることは `tests/test_reference.py` で確認しています。このリファレンスデータは qwave 0.3.0 に対応します。
+`python export_reference.py` は [`reference/`](../reference/README.md) に 5 つの固定ケースを出力します（自由粒子、調和振動子、吸収層と確率流検出器つきの sech² 障壁、グロス・ピタエフスキーのソリトン、吸収層つきの 2D 二重スリット）。各ケースには入力の配列と、1・100・1000 ステップ後の ψ・ノルム・エネルギー・確率流、そして float64 版と float32 版が満たすべき許容誤差が入っています。バイナリ形式と、移植版が合わせるべき約束事（座標、FFT の並び、因子の順序、吸収層、確率流）は [reference/README.md](../reference/README.md) にまとめています。Python 実装がこれを再現し続けていることは `tests/test_reference.py` で確認しています。このリファレンスデータは qwave 0.3.0 に対応します。[`web/`](../web/README.md#japanese) の JavaScript 版はすでにこれに合格しています（`cd web && node --test`、float64 で ~10⁻¹³、float32 で ~10⁻⁵）。
 
 ### 検証から得た注意点
 
