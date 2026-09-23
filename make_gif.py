@@ -10,6 +10,10 @@ Accuracy notes (checked against a 2x finer grid and dt = 0.001):
   * Remaining spatial error at dx = 0.125: 1-5 % in the density (mostly the staircase disk edge).
   * Tunneling: V0 = 10 > E ≈ 8 with σ = 3, so < 1 % of the transmitted probability comes from
     over-barrier (E > V0) momentum components — it really is tunneling.
+  * The simulation box (56 × 56) is larger than the view (the central 40 × 40), so the initial
+    packets sit well clear of the absorbing layer and are not cut off at the periodic edge
+    (Solver.diagnose reports nothing); waves leaving the view run on into the margin and are
+    absorbed there (γmax = 10 over 3.2 units: ~3e-5 residual at k = 4).
   * Brightness ∝ |ψ| on a fixed scale per panel (max |ψ| at t = 0), so frames are comparable in time.
     |ψ| rather than |ψ|² keeps weak waves visible; the tunneling panel prints the transmitted probability P(x > wall).
 Uses ffmpeg (palettegen) if available for better colors; otherwise falls back to Pillow.
@@ -20,13 +24,15 @@ import subprocess
 import tempfile
 
 import numpy as np
-from matplotlib import colormaps
+from matplotlib import colormaps, font_manager
 from PIL import Image, ImageDraw, ImageFont
 
-from qwave.potentials import check_on_grid, double_slit, paint_disk
-from qwave.solver import Grid, Solver, absorbing_mask, gaussian_packet
+from qwave.potentials import check_on_grid, double_slit, paint_disk, rect_barrier
+from qwave.solver import Grid, Solver, gaussian_packet
 
-N, L = 320, 40.0                     # dx = 0.125
+N, L = 448, 56.0                     # dx = 0.125; simulation box
+VIEW = 320                           # cells shown: the central 40 × 40
+ABSORBER = dict(width=3.2, gamma_max=10.0)
 DT, STEPS_PER_FRAME, N_FRAMES = 0.005, 12, 88     # stop before waves hit the edges
 PANEL, PAD, HEADER = 260, 6, 30      # pixel sizes
 CMAP = colormaps["inferno"]
@@ -37,7 +43,7 @@ check_on_grid(g.dx[0], 1.0, 0.5, 1.25, 5.0, 4.0)
 
 
 def scenario_tunneling():
-    V = np.where((x >= -0.5) & (x < 0.5), 10.0, 0.0)                     # ⟨E⟩ ≈ 8 < V0 = 10
+    V = rect_barrier(g, 10.0, 1.0)                                       # ⟨E⟩ ≈ 8 < V0 = 10
     return "Tunneling", V, gaussian_packet(g, (-10, 0), 3.0, (4.0, 0))
 
 
@@ -51,7 +57,13 @@ def scenario_scattering():
     return "Scattering", V, gaussian_packet(g, (-11, 0.8), 2.5, (4.0, 0))
 
 
+def crop(a):
+    lo = (N - VIEW) // 2
+    return a[lo:lo + VIEW, lo:lo + VIEW]
+
+
 def render_panel(psi, V, vmax):
+    psi, V = crop(psi), crop(V)
     amp = np.abs(psi).T[::-1]                                            # y up
     rgb = CMAP(np.clip(amp / vmax, 0, 1))[..., :3]
     wall = (V.T[::-1] > 0)[..., None]
@@ -60,15 +72,25 @@ def render_panel(psi, V, vmax):
     return img
 
 
+def load_font(weight, size):
+    """DejaVu Sans ships with matplotlib, so the GIF looks the same on Linux, macOS and Windows
+    (and ψ, ħ, · render, which Pillow's built-in bitmap font cannot do)."""
+    path = font_manager.findfont(font_manager.FontProperties(family="DejaVu Sans", weight=weight),
+                                 fallback_to_default=True)
+    return ImageFont.truetype(path, size)
+
+
 def main():
-    font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-    font = ImageFont.truetype(font_path, 17) if os.path.exists(font_path) else ImageFont.load_default()
-    small = ImageFont.truetype(font_path.replace("-Bold", ""), 13) if os.path.exists(font_path) else font
+    font = load_font("bold", 17)
+    small = load_font("normal", 13)
 
     sims = []
     for make in (scenario_tunneling, scenario_double_slit, scenario_scattering):
         title, V, psi = make()
-        sims.append([title, V, psi, Solver(g, V, DT, absorber=absorbing_mask(g, DT)), np.abs(psi).max()])
+        solver = Solver(g, V, DT, absorber=ABSORBER)
+        for msg in solver.diagnose(psi):
+            print(f"warning ({title}):", msg)
+        sims.append([title, V, psi, solver, np.abs(psi).max()])
 
     W = 3 * PANEL + 4 * PAD
     H = HEADER + PANEL + PAD + 22

@@ -23,3 +23,27 @@ def T_packet(k0, sigma, V0, a, n=20001):
     k = k[k > 0]                                   # negative-k weight is negligible here
     w = np.exp(-((k - k0) ** 2) / (2 * sk**2))
     return float(np.sum(w * T_rect(k**2 / 2, V0, a)) / np.sum(w))
+
+
+def ho_levels(n, omega=1.0):
+    """Lowest n energies of the 1D harmonic oscillator: E_j = ω (j + 1/2)."""
+    return omega * (np.arange(n) + 0.5)
+
+
+def driven_ho_x(t, x0, omega, F0, Omega):
+    """⟨x⟩(t) of a harmonic oscillator driven by the force F0 cos(Ωt), starting at rest at x0.
+    Exact for any quantum state (Ehrenfest is exact for quadratic potentials); needs Ω ≠ ω."""
+    A = F0 / (omega**2 - Omega**2)
+    t = np.asarray(t, float)
+    return (x0 - A) * np.cos(omega * t) + A * np.cos(Omega * t)
+
+
+def bloch_period(force, lattice_period):
+    """Bloch-oscillation period T_B = 2π / (|F| a) of a particle in a lattice of period a under force F."""
+    return 2 * np.pi / (abs(force) * lattice_period)
+
+
+def fringe_period_ky(slit_sep):
+    """Far-field double-slit fringe period in transverse momentum: Δk_y = 2π / d
+    (equivalently d sin θ = n λ, since k_y = k sin θ)."""
+    return 2 * np.pi / slit_sep

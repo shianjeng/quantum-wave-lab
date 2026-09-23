@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qwave"
+version = "0.2.0"
+description = "Split-step Fourier solver for the time-dependent Schrödinger equation (reference implementation of Quantum Wave Lab)"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Hank Zhu" }]
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.24"]
+
+[project.optional-dependencies]
+# validate.py, demo_2d.py, make_gif.py (Pillow comes with matplotlib)
+figures = ["matplotlib>=3.7"]
+dev = ["qwave[figures]", "pytest>=7", "ruff>=0.5"]
+
+[project.urls]
+Repository = "https://github.com/shianjeng/quantum-wave-lab"
+
+[tool.setuptools]
+packages = ["qwave"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]          # tests import qwave even without `pip install -e .`
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+# E402: the scripts call matplotlib.use("Agg") before importing pyplot
+# E702: `ts.append(...); xs.append(...)` one-liners in the sampling loops are intentional
+# B905: zip() over per-axis tuples of equal length by construction
+ignore = ["E402", "E702", "B905"]

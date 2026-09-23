@@ -8,9 +8,27 @@ def harmonic(grid: Grid, omega=1.0):
     return 0.5 * omega**2 * sum(xi**2 for xi in grid.x)
 
 
+def rect_barrier(grid: Grid, height, width, center=0.0, edge=0.0):
+    """Barrier of the given height on center - width/2 <= x < center + width/2 (x = axis 0).
+    Works on 1D and 2D grids; in 2D it is a wall that depends only on x.
+
+    edge = 0: sharp, half-open interval, so (number of cells) × dx == width when width/dx is an
+              integer. The time error of the splitting is then only O(dt) (the potential is
+              discontinuous), see validate.py.
+    edge > 0: smooth tanh edges of that width (same half-height points), which restores O(dt²)
+              at the price of a slightly different T(E) from the textbook rectangular barrier.
+    """
+    x = grid.x[0]
+    if edge == 0:
+        return np.where(_interval(x, center, width, grid.dx[0]), height, 0.0)
+    # half-height points on the same cell faces as the sharp version
+    left, right = center - width / 2 - grid.dx[0] / 2, center + width / 2 - grid.dx[0] / 2
+    return 0.5 * height * (np.tanh((x - left) / edge) - np.tanh((x - right) / edge))
+
+
 def rect_barrier_1d(grid: Grid, height, width, center=0.0):
-    """Half-open interval so that (number of cells) × dx == width when width/dx is an integer."""
-    return np.where(_interval(grid.x[0], center, width, grid.dx[0]), height, 0.0)
+    """Backwards-compatible alias of rect_barrier (which also works in 2D)."""
+    return rect_barrier(grid, height, width, center)
 
 
 def _interval(u, center, width, du):
@@ -23,11 +41,30 @@ def _interval(u, center, width, du):
 def double_slit(grid: Grid, wall_x=0.0, thickness=0.5, slit_width=1.25, slit_sep=5.0, height=1e3):
     """Vertical wall at x = wall_x with two openings centered at y = ±slit_sep/2.
     Choose dimensions that are integer multiples of dx (see check_on_grid)."""
+    return slits(grid, (slit_sep / 2, -slit_sep / 2), wall_x, thickness, slit_width, height)
+
+
+def slits(grid: Grid, centers, wall_x=0.0, thickness=0.5, slit_width=1.25, height=1e3):
+    """Vertical wall at x = wall_x with openings of width slit_width centered at y = each of `centers`
+    (one center: single slit, two: double slit, many: grating)."""
     x, y = grid.x
     wall = _interval(x, wall_x, thickness, grid.dx[0])
-    slit1 = _interval(y, slit_sep / 2, slit_width, grid.dx[1])
-    slit2 = _interval(y, -slit_sep / 2, slit_width, grid.dx[1])
-    return np.where(wall & ~(slit1 | slit2), height, 0.0)
+    hole = np.zeros(grid.n, dtype=bool)
+    for c in centers:
+        hole |= _interval(y, c, slit_width, grid.dx[1])
+    return np.where(wall & ~hole, height, 0.0)
+
+
+def cosine_lattice(grid: Grid, depth, period, axis=0):
+    """Periodic potential V = -depth · cos(2π x / period) along `axis`.
+    Choose a period that divides the box length so the lattice is continuous across the boundary."""
+    return -depth * np.cos(2 * np.pi * grid.x[axis] / period)
+
+
+def tilt(grid: Grid, force, axis=0):
+    """Linear potential V = force · x (a uniform force -force along `axis`).
+    It jumps at the periodic boundary, so keep the wave packet away from the box edges."""
+    return force * grid.x[axis]
 
 
 def check_on_grid(dx, *lengths):
@@ -39,9 +76,19 @@ def check_on_grid(dx, *lengths):
             raise ValueError(f"length {L} is {n:.3f} cells (dx = {dx}); pick a multiple of dx")
 
 
-def paint_disk(V, grid: Grid, center, radius, height):
-    """Mouse-brush primitive: add a disk of potential. Returns a new array."""
+def paint_disk(V, grid: Grid, center, radius, height, mode="set"):
+    """Mouse-brush primitive: paint a disk of potential. Returns a new array.
+
+    mode="set"  the disk's cells become `height` (overwrites what was there; use height=0 as an eraser)
+    mode="add"  `height` is added to the existing potential (overlapping strokes pile up)
+    """
     x, y = grid.x
-    V = V.copy()
-    V[(x - center[0]) ** 2 + (y - center[1]) ** 2 <= radius**2] = height
+    V = np.array(V, dtype=float)
+    disk = (x - center[0]) ** 2 + (y - center[1]) ** 2 <= radius**2
+    if mode == "set":
+        V[disk] = height
+    elif mode == "add":
+        V[disk] += height
+    else:
+        raise ValueError(f"mode must be 'set' or 'add', got {mode!r}")
     return V
