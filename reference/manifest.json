@@ -1,0 +1,317 @@
+{
+  "format_version": 1,
+  "units": "hbar = m = 1",
+  "cases": [
+    {
+      "name": "free_1d",
+      "description": "free Gaussian packet, periodic box",
+      "ndim": 1,
+      "n": [
+        256
+      ],
+      "length": [
+        51.2
+      ],
+      "dx": [
+        0.2
+      ],
+      "dt": 0.01,
+      "nonlinearity": 0.0,
+      "absorber": null,
+      "detectors": [],
+      "files": {
+        "V": "free_1d/V.f64",
+        "psi0": "free_1d/psi_0.c128"
+      },
+      "checkpoints": [
+        {
+          "step": 1,
+          "t": 0.01,
+          "psi": "free_1d/psi_1.c128",
+          "norm": 1.0,
+          "energy": 2.031250000000032
+        },
+        {
+          "step": 100,
+          "t": 1.0000000000000007,
+          "psi": "free_1d/psi_100.c128",
+          "norm": 0.9999999999999979,
+          "energy": 2.0312500000000306
+        },
+        {
+          "step": 1000,
+          "t": 9.999999999999831,
+          "psi": "free_1d/psi_1000.c128",
+          "norm": 1.0000000000000007,
+          "energy": 2.0312500000000138
+        }
+      ],
+      "tolerance": {
+        "float64": 1e-10,
+        "float32": 0.00015410984953843532
+      },
+      "float32_error_measured": 1.5410984953843532e-05
+    },
+    {
+      "name": "harmonic_1d",
+      "description": "coherent state in V = x\u00b2/2",
+      "ndim": 1,
+      "n": [
+        256
+      ],
+      "length": [
+        25.6
+      ],
+      "dx": [
+        0.1
+      ],
+      "dt": 0.005,
+      "nonlinearity": 0.0,
+      "absorber": null,
+      "detectors": [],
+      "files": {
+        "V": "harmonic_1d/V.f64",
+        "psi0": "harmonic_1d/psi_0.c128"
+      },
+      "checkpoints": [
+        {
+          "step": 1,
+          "t": 0.005,
+          "psi": "harmonic_1d/psi_1.c128",
+          "norm": 0.9999999999999997,
+          "energy": 4.999999999296881
+        },
+        {
+          "step": 100,
+          "t": 0.5000000000000003,
+          "psi": "harmonic_1d/psi_100.c128",
+          "norm": 1.000000000000005,
+          "energy": 4.999993535491101
+        },
+        {
+          "step": 1000,
+          "t": 4.999999999999916,
+          "psi": "harmonic_1d/psi_1000.c128",
+          "norm": 1.000000000000045,
+          "energy": 4.999974138145271
+        }
+      ],
+      "tolerance": {
+        "float64": 1e-10,
+        "float32": 0.00018026844683461635
+      },
+      "float32_error_measured": 1.8026844683461634e-05
+    },
+    {
+      "name": "sech2_barrier_absorber_1d",
+      "description": "smooth barrier 1.5 sech\u00b2(x/0.5), absorbing layer, flux detectors at x = 5",
+      "ndim": 1,
+      "n": [
+        512
+      ],
+      "length": [
+        102.4
+      ],
+      "dx": [
+        0.2
+      ],
+      "dt": 0.03,
+      "nonlinearity": 0.0,
+      "absorber": {
+        "width": 16.0,
+        "gamma_max": 1.0
+      },
+      "detectors": [
+        {
+          "position": 5.0,
+          "method": "spectral"
+        },
+        {
+          "position": 5.0,
+          "method": "fd4"
+        }
+      ],
+      "files": {
+        "V": "sech2_barrier_absorber_1d/V.f64",
+        "psi0": "sech2_barrier_absorber_1d/psi_0.c128",
+        "absorber_mask": "sech2_barrier_absorber_1d/absorber_mask.f64"
+      },
+      "checkpoints": [
+        {
+          "step": 1,
+          "t": 0.03,
+          "psi": "sech2_barrier_absorber_1d/psi_1.c128",
+          "norm": 0.9999999999985397,
+          "energy": 1.2895612877671567,
+          "flux_transmitted": [
+            5.876848184521225e-07,
+            5.876669676320377e-07
+          ]
+        },
+        {
+          "step": 100,
+          "t": 2.999999999999995,
+          "psi": "sech2_barrier_absorber_1d/psi_100.c128",
+          "norm": 0.9999999999810214,
+          "energy": 1.289556366498015,
+          "flux_transmitted": [
+            0.001643796520310049,
+            0.0016426901459208301
+          ]
+        },
+        {
+          "step": 1000,
+          "t": 30.00000000000038,
+          "psi": "sech2_barrier_absorber_1d/psi_1000.c128",
+          "norm": 0.8298740132014857,
+          "energy": 1.2495677875712168,
+          "flux_transmitted": [
+            0.6295328309447669,
+            0.6292963034103661
+          ]
+        }
+      ],
+      "tolerance": {
+        "float64": 1e-10,
+        "float32": 0.0003313104192778362
+      },
+      "float32_error_measured": 3.3131041927783624e-05
+    },
+    {
+      "name": "soliton_gp_1d",
+      "description": "Gross\u2013Pitaevskii bright soliton, g = -2, v = 1",
+      "ndim": 1,
+      "n": [
+        512
+      ],
+      "length": [
+        51.2
+      ],
+      "dx": [
+        0.1
+      ],
+      "dt": 0.002,
+      "nonlinearity": -2.0,
+      "absorber": null,
+      "detectors": [],
+      "files": {
+        "V": "soliton_gp_1d/V.f64",
+        "psi0": "soliton_gp_1d/psi_0.c128"
+      },
+      "checkpoints": [
+        {
+          "step": 1,
+          "t": 0.002,
+          "psi": "soliton_gp_1d/psi_1.c128",
+          "norm": 0.9999999999999747,
+          "energy": 0.33333333333369447
+        },
+        {
+          "step": 100,
+          "t": 0.20000000000000015,
+          "psi": "soliton_gp_1d/psi_100.c128",
+          "norm": 0.9999999999999782,
+          "energy": 0.333333333333948
+        },
+        {
+          "step": 1000,
+          "t": 2.0000000000000013,
+          "psi": "soliton_gp_1d/psi_1000.c128",
+          "norm": 1.000000000000015,
+          "energy": 0.33333333333433496
+        }
+      ],
+      "tolerance": {
+        "float64": 1e-10,
+        "float32": 0.00024126758687623335
+      },
+      "float32_error_measured": 2.4126758687623335e-05
+    },
+    {
+      "name": "double_slit_2d",
+      "description": "double slit with absorbing layer, flux detectors behind the upper / lower half (the on-grid slits are mirror-symmetric about y = -dy/2, not y = 0, so the two halves differ by a few %)",
+      "ndim": 2,
+      "n": [
+        128,
+        128
+      ],
+      "length": [
+        32.0,
+        32.0
+      ],
+      "dx": [
+        0.25,
+        0.25
+      ],
+      "dt": 0.005,
+      "nonlinearity": 0.0,
+      "absorber": {
+        "width": 2.56,
+        "gamma_max": 10.0
+      },
+      "detectors": [
+        {
+          "position": 0.0,
+          "method": "spectral",
+          "span": [
+            0.0,
+            16.0
+          ]
+        },
+        {
+          "position": 0.0,
+          "method": "spectral",
+          "span": [
+            -16.0,
+            0.0
+          ]
+        }
+      ],
+      "files": {
+        "V": "double_slit_2d/V.f64",
+        "psi0": "double_slit_2d/psi_0.c128",
+        "absorber_mask": "double_slit_2d/absorber_mask.f64"
+      },
+      "checkpoints": [
+        {
+          "step": 1,
+          "t": 0.005,
+          "psi": "double_slit_2d/psi_1.c128",
+          "norm": 0.9999998743944082,
+          "energy": 8.097149344351251,
+          "flux_transmitted": [
+            3.2597561314838727e-10,
+            3.0898131398513295e-10
+          ]
+        },
+        {
+          "step": 100,
+          "t": 0.5000000000000003,
+          "psi": "double_slit_2d/psi_100.c128",
+          "norm": 0.9999961195721527,
+          "energy": 8.096896564045364,
+          "flux_transmitted": [
+            2.4030138406745526e-05,
+            2.234990339655908e-05
+          ]
+        },
+        {
+          "step": 1000,
+          "t": 4.999999999999916,
+          "psi": "double_slit_2d/psi_1000.c128",
+          "norm": 0.33770650627617765,
+          "energy": 7.226282851437285,
+          "flux_transmitted": [
+            0.13455605509183718,
+            0.13079445587544722
+          ]
+        }
+      ],
+      "tolerance": {
+        "float64": 1e-10,
+        "float32": 0.00044126356565137037
+      },
+      "float32_error_measured": 4.412635656513704e-05
+    }
+  ]
+}

@@ -26,6 +26,14 @@ def rect_barrier(grid: Grid, height, width, center=0.0, edge=0.0):
     return 0.5 * height * (np.tanh((x - left) / edge) - np.tanh((x - right) / edge))
 
 
+def sech2_barrier(grid: Grid, height, width, center=0.0):
+    """Smooth barrier V = height / cosh²((x - center) / width) along axis 0 (a wall in 2D).
+    Its transmission is known exactly (analytic.T_sech2), and being smooth it keeps the splitting
+    O(dt²) and the probability current well resolved (observables.FluxDetector)."""
+    e = np.exp(-2 * np.abs(grid.x[0] - center) / width)          # sech²u = 4e^{-2|u|}/(1+e^{-2|u|})², no overflow
+    return height * 4 * e / (1 + e) ** 2
+
+
 def rect_barrier_1d(grid: Grid, height, width, center=0.0):
     """Backwards-compatible alias of rect_barrier (which also works in 2D)."""
     return rect_barrier(grid, height, width, center)
@@ -33,14 +41,21 @@ def rect_barrier_1d(grid: Grid, height, width, center=0.0):
 
 def _interval(u, center, width, du):
     """Half-open [center - w/2, center + w/2): contains exactly width/du grid points
-    when width/du is an integer and the edges fall on grid points."""
+    when width/du is an integer and the edges fall on grid points.
+
+    Seen as cells [u_j - du/2, u_j + du/2), the covered region is [center - w/2, center + w/2) shifted
+    by -du/2, so every on-grid object is centred at center - du/2 (the price of the exact cell count).
+    E.g. double_slit(..) is mirror-symmetric about y = -dy/2, not y = 0."""
     eps = 1e-9 * du
     return (u - center >= -width / 2 - eps) & (u - center < width / 2 - eps)
 
 
 def double_slit(grid: Grid, wall_x=0.0, thickness=0.5, slit_width=1.25, slit_sep=5.0, height=1e3):
     """Vertical wall at x = wall_x with two openings centered at y = ±slit_sep/2.
-    Choose dimensions that are integer multiples of dx (see check_on_grid)."""
+    Choose dimensions that are integer multiples of dx (see check_on_grid).
+    On the grid the pattern is mirror-symmetric about y = -dy/2 (see _interval): centre the incoming
+    packet there when the two slits must be lit exactly equally (a packet at y = 0 with σ_y = 3 and
+    dy = 0.156 sends ~4 % more probability through the upper slit)."""
     return slits(grid, (slit_sep / 2, -slit_sep / 2), wall_x, thickness, slit_width, height)
 
 

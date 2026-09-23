@@ -29,14 +29,19 @@ Units ħ = m = 1. One time step:
 
 Every factor is unitary, so the norm is conserved to machine precision. The time error is O(Δt²) for smooth (also time-dependent) potentials, but only ≈ O(Δt) at sharp edges such as a rectangular barrier; `rect_barrier(..., edge=w)` gives the barrier tanh edges and restores O(Δt²). For a static potential the closing half-step of one step and the opening half-step of the next are merged into one factor e^{-iVΔt}.
 Wrap-around at the periodic boundary is suppressed by a complex absorbing potential e^{-γ(r)Δt}, whose absorption rate is independent of Δt. Its quality depends on the wavenumber and the layer width: a thin layer (8 % of a 40-wide box) with the default γ_max = 2 lets ~4 % of a k = 4 wave through, γ_max = 10 brings that to ~3 × 10⁻⁵ (panel 9 below, `absorber_residual`).
-Barrier and slit widths are integer multiples of the grid spacing Δx, so the effective width never silently differs from the nominal one (`check_on_grid`).
+Barrier and slit widths are integer multiples of the grid spacing Δx, so the effective width never silently differs from the nominal one (`check_on_grid`). The price is that on-grid objects are centred half a cell below their nominal position (e.g. the double slit is mirror-symmetric about y = −Δy/2).
 
 Beyond real-time propagation, `qwave` also provides
 
 - **time-dependent potentials**: pass a callable `V(t)` instead of an array (evaluated at the midpoint of each step),
 - **stationary states** by imaginary-time propagation: `eigenstates(grid, V, n)`, `ground_state(grid, V)`,
 - **single precision**: `Solver(..., dtype=np.complex64)` emulates the float32 arithmetic of the WASM/WebGL port; `renormalize_every=N` removes its slow norm drift,
-- **sanity checks**: `Solver.diagnose(ψ)` reports V·Δt that is too large where ψ is, momentum content near the grid's Nyquist limit (or ψ cut off at the box edge), and an initial state that already sits in the absorbing layer.
+- **sanity checks**: `Solver.diagnose(ψ)` reports V·Δt that is too large where ψ is, momentum content near the grid's Nyquist limit (or ψ cut off at the box edge), and an initial state that already sits in the absorbing layer,
+- **Gross–Pitaevskii / nonlinear Schrödinger equation**: `Solver(..., nonlinearity=g)` adds g|ψ|²ψ (solitons, Bose–Einstein condensates); `ground_state(..., nonlinearity=g)` prepares a condensate in a trap. Split-step Fourier is only stable for Δt·k_max²/2 < π here (Weideman & Herbst 1986): beyond it, the solution blows up after a while, so `Solver` warns,
+- **live measurements**: `FluxDetector` integrates the probability current j = Im(ψ*∇ψ) through a line — transmission while the wave is still scattering, unaffected by the absorber, per slit if wanted; `step(..., callback=...)` hands ψ to any observer after every step. The flux needs a smooth potential (see `sech2_barrier`): at sharp edges it aliases in time,
+- **reference data for the port**: `python export_reference.py` writes `reference/` (inputs, ψ after 1/100/1000 steps, norm, energy, flux, float64/float32 tolerances; format in [reference/README.md](reference/README.md)); a C++/WASM port has to reproduce it, and `tests/test_reference.py` checks that Python still does.
+
+![Gross–Pitaevskii demos](figures/gpe.png)
 
 ### Validation
 
@@ -46,7 +51,7 @@ Beyond real-time propagation, `qwave` also provides
 | Test | Error |
 |---|---|
 | 2D norm conservation (double slit) | 9 × 10⁻¹⁴ |
-| Free Gaussian spreading σ(t) (relative) | 2 × 10⁻¹⁵ |
+| Free Gaussian spreading σ(t) (relative) | 2 × 10⁻¹⁴ |
 | Harmonic-oscillator coherent state ⟨x⟩ = x₀ cos ωt | 6 × 10⁻⁵ |
 | Harmonic-oscillator energy conservation (relative) | 6 × 10⁻⁶ |
 | Rectangular-barrier transmission T(E) (analytic, averaged over the packet's momentum distribution) | 9 × 10⁻⁴ |
@@ -61,6 +66,13 @@ Beyond real-time propagation, `qwave` also provides
 | Single precision (complex64) norm drift, 1000 steps | 8 × 10⁻⁵ |
 | Single precision with renormalize_every=100: max norm drift over 1000 steps | 8 × 10⁻⁶ |
 | Absorbing layer, residual (reflected + wrapped) probability for 1 ≤ k ≤ 8 | 2 × 10⁻⁶ |
+| Flux detector: transmission through a sech² barrier vs exact T(E), absorber active | 4 × 10⁻⁵ |
+| Flux detector: 4th-order finite-difference vs spectral current | 9 × 10⁻⁷ |
+| Bright soliton (Gross–Pitaevskii, g < 0) vs exact solution at t = 20 (L2) | 7 × 10⁻⁶ |
+| Bright soliton: convergence order in dt: \|p − 2\| | 9 × 10⁻⁶ |
+| Bright soliton: energy vs v²/2 − g²/24 (relative) | 2 × 10⁻¹² |
+| Gross–Pitaevskii ground state, μ vs Thomas–Fermi limit (relative; g = 500, μ ≈ 41ω) | 2 × 10⁻⁴ |
+| Gross–Pitaevskii ground state is stationary: 1 − \|⟨ψ(0)\|ψ(10)⟩\| and phase error of e^{−iμt} | 4 × 10⁻⁷ |
 <!-- validation-table:en:end -->
 
 In the 2D demo (`demo_2d.py`), the tunneling probability through a wall that depends only on x is compared with
@@ -78,7 +90,9 @@ python -m pytest -q                # fast unit tests
 python validate.py                 # comparison with analytic results → figures/validation.png
 python validate.py --update-readme # ... and refresh the tables in this README
 python demo_2d.py                  # double slit & 2D tunneling → figures/*.png, *.gif
+python demo_gpe.py                 # soliton collision & BEC interference → figures/gpe.png
 python make_gif.py                 # README GIF → figures/hero.gif
+python export_reference.py         # reference data for the C++/WASM port → reference/
 ruff check .                       # lint (also run by CI)
 ```
 
@@ -94,30 +108,47 @@ print(s.diagnose(psi))             # [] = no warnings
 psi = s.step(psi, 500)
 ```
 
+```python
+from qwave import FluxDetector
+from qwave.potentials import sech2_barrier
+
+g = Grid(4096, 400)
+s = Solver(g, sech2_barrier(g, 1.5, 0.5), dt=0.02, absorber=True)
+psi = gaussian_packet(g, center=-50, sigma=5, k0=1.6)
+det = FluxDetector(g, position=5.0)
+det.record(s.t, psi)
+psi = s.step(psi, 3000, callback=det.record)
+print(det.transmitted)             # probability that has crossed x = 5 so far
+```
+
 ### Structure
 
 ```
-qwave/solver.py      Grid, Solver (time-dependent V, complex64, diagnose), gaussian_packet, absorber
-qwave/eigen.py       stationary states by imaginary-time propagation
-qwave/potentials.py  harmonic, rectangular barrier, slits, lattice, tilt, brush painting, grid check
-qwave/analytic.py    analytic references (barrier transmission, HO levels, driven HO, Bloch period, ...)
+qwave/solver.py      Grid, Solver (time-dependent V, Gross–Pitaevskii, complex64, callbacks, diagnose), absorber
+qwave/eigen.py       stationary states and GP ground states by imaginary-time propagation
+qwave/observables.py probability current, FluxDetector
+qwave/potentials.py  harmonic, rectangular / sech² barrier, slits, lattice, tilt, brush painting, grid check
+qwave/analytic.py    analytic references (barrier transmission, HO, Bloch period, soliton, Thomas–Fermi, ...)
 validate.py          validation against analytic results (writes figures, updates README tables)
 demo_2d.py           2D demos
+demo_gpe.py          Gross–Pitaevskii demos
 make_gif.py          README GIF generator
-tests/               unit tests for CI
+export_reference.py  reference data for the port → reference/
+tests/               unit tests for CI (including the reference data)
 pyproject.toml       package metadata, pytest and ruff settings
 ```
 
 ### Roadmap
 
 - [x] Python reference implementation and numerical validation
-- [ ] Port to C++17 (FFT: pocketfft / KissFFT) with tests that match the Python results
+- [x] Reference data that a port must reproduce (`reference/`)
+- [ ] Port to C++17 (FFT: pocketfft / KissFFT) with tests against `reference/`
 - [ ] Compile to WebAssembly with Emscripten, render with WebGL2
 - [ ] Draw potentials with the mouse; presets (tunneling, double slit, scattering)
 - [ ] Benchmark: plain JS vs. WASM vs. WASM + SIMD
 - [ ] Deploy on GitHub Pages
 
-Notes for the port, from the validation above: single precision is sufficient (relative error ~10⁻⁵ after 1000 steps) but the norm drifts slowly, so renormalize every few hundred steps when no absorber is active (`renormalize_every`); simulate on a box larger than the visible area so packets start clear of the absorbing layer (as `make_gif.py` does); keep V·Δt ≲ 1 at hard walls; scale γ_max of the absorber with the typical k and the layer width; run `diagnose` every few frames.
+Notes for the port, from the validation above: single precision is sufficient (relative error ~10⁻⁵ after 1000 steps) but the norm drifts slowly, so renormalize every few hundred steps when no absorber is active (`renormalize_every`); simulate on a box larger than the visible area so packets start clear of the absorbing layer (as `make_gif.py` does); keep V·Δt ≲ 1 at hard walls; scale γ_max of the absorber with the typical k and the layer width; run `diagnose` every few frames. For the live transmission display, the 4th-order finite-difference flux (5 grid lines, error ≈ (kΔx)⁴/30) is enough; with g ≠ 0 keep Δt·k_max²/2 < π.
 
 ---
 
@@ -140,7 +171,7 @@ Notes for the port, from the validation above: single precision is sufficient (r
 
 各演算子はユニタリなのでノルムは機械精度で保存されます。時間誤差は滑らかなポテンシャル（時間依存でも）では O(Δt²) ですが、矩形障壁のような鋭い角があるとほぼ O(Δt) に落ちます。`rect_barrier(..., edge=w)` で障壁の角を tanh で丸めると O(Δt²) に戻ります。ポテンシャルが時間に依存しない場合は、あるステップの最後の半ステップと次のステップの最初の半ステップを 1 つの因子 e^{-iVΔt} にまとめています。
 周期境界での折り返しは複素吸収ポテンシャル e^{-γ(r)Δt} で抑制します（吸収率は Δt に依存しません）。吸収の良し悪しは波数と吸収層の幅で決まり、薄い層（幅 40 の箱の 8%）ではデフォルトの γ_max = 2 だと k = 4 の波の約 4% が通り抜けますが、γ_max = 10 にすると約 3 × 10⁻⁵ になります（下のパネル 9、`absorber_residual`）。
-障壁やスリットの幅は格子間隔 Δx の整数倍に取り、実効幅が公称値とずれないようにしています（`check_on_grid`）。
+障壁やスリットの幅は格子間隔 Δx の整数倍に取り、実効幅が公称値とずれないようにしています（`check_on_grid`）。その代わり、格子上の物体の中心は公称位置から半セルずれます（例: 二重スリットは y = 0 ではなく y = −Δy/2 について鏡映対称）。
 
 実時間発展のほかに、`qwave` には次の機能があります。
 
@@ -148,6 +179,11 @@ Notes for the port, from the validation above: single precision is sufficient (r
 - **虚時間発展による定常状態**: `eigenstates(grid, V, n)`、`ground_state(grid, V)`
 - **単精度**: `Solver(..., dtype=np.complex64)` で WASM/WebGL 版の float32 演算を再現。`renormalize_every=N` でノルムのゆっくりしたずれを除去
 - **妥当性チェック**: `Solver.diagnose(ψ)` が、ψ のある場所での V·Δt の大きすぎ、格子のナイキスト限界に近い運動量成分（または箱の端で ψ が切れていること）、初期状態が吸収層にかかっていることを報告
+- **グロス・ピタエフスキー方程式（非線形シュレディンガー方程式）**: `Solver(..., nonlinearity=g)` で g|ψ|²ψ 項を追加（ソリトン、ボース・アインシュタイン凝縮）。`ground_state(..., nonlinearity=g)` でトラップ中の凝縮体を準備。この場合、分割ステップ・フーリエ法は Δt·k_max²/2 < π でしか安定でない（Weideman & Herbst 1986）ため、超えると `Solver` が警告
+- **リアルタイム計測**: `FluxDetector` が線を横切る確率流 j = Im(ψ*∇ψ) を時間積分。散乱の途中でも透過率が分かり、吸収層の影響を受けず、スリットごとにも測れる。`step(..., callback=...)` で毎ステップ ψ を受け取れる。確率流は滑らかなポテンシャルが前提（`sech2_barrier` など）で、角が鋭いと時間方向にエイリアスする
+- **移植用のリファレンスデータ**: `python export_reference.py` が `reference/` を出力（入力、1/100/1000 ステップ後の ψ、ノルム、エネルギー、確率流、float64/float32 の許容誤差。形式は [reference/README.md](reference/README.md)）。C++/WASM 版はこれを再現すればよく、Python 側も `tests/test_reference.py` で確認
+
+![グロス・ピタエフスキー方程式のデモ](figures/gpe.png)
 
 ### 数値検証
 
@@ -157,7 +193,7 @@ Notes for the port, from the validation above: single precision is sufficient (r
 | テスト | 誤差 |
 |---|---|
 | 2D ノルム保存（二重スリット） | 9 × 10⁻¹⁴ |
-| 自由粒子の波束の広がり σ(t)（相対） | 2 × 10⁻¹⁵ |
+| 自由粒子の波束の広がり σ(t)（相対） | 2 × 10⁻¹⁴ |
 | 調和振動子コヒーレント状態 ⟨x⟩ = x₀ cos ωt | 6 × 10⁻⁵ |
 | 調和振動子のエネルギー保存（相対） | 6 × 10⁻⁶ |
 | 矩形障壁の透過率 T(E)（運動量分布で平均した解析解と比較） | 9 × 10⁻⁴ |
@@ -172,6 +208,13 @@ Notes for the port, from the validation above: single precision is sufficient (r
 | 単精度（complex64）のノルムのずれ、1000 ステップ | 8 × 10⁻⁵ |
 | 単精度＋100 ステップごとの再規格化: 1000 ステップ中のノルムの最大のずれ | 8 × 10⁻⁶ |
 | 吸収層の残存確率（反射＋折り返し）、1 ≤ k ≤ 8 | 2 × 10⁻⁶ |
+| フラックス検出器: sech² 障壁の透過率と厳密解（吸収層あり） | 4 × 10⁻⁵ |
+| フラックス検出器: 4 次差分と スペクトル法の電流の差 | 9 × 10⁻⁷ |
+| 明るいソリトン（GP 方程式, g < 0）と厳密解の差、t = 20（L2） | 7 × 10⁻⁶ |
+| 明るいソリトン: 時間刻みの収束次数 \|p − 2\| | 9 × 10⁻⁶ |
+| 明るいソリトン: エネルギーと v²/2 − g²/24 の差（相対） | 2 × 10⁻¹² |
+| GP 方程式の基底状態、μ とトーマス・フェルミ極限の差（相対、g = 500, μ ≈ 41ω） | 2 × 10⁻⁴ |
+| GP 基底状態の定常性: 1 − \|⟨ψ(0)\|ψ(10)⟩\| と位相 e^{−iμt} のずれ | 4 × 10⁻⁷ |
 <!-- validation-table:ja:end -->
 
 2D デモ（`demo_2d.py`）では、x のみに依存する壁でのトンネル確率を
@@ -187,7 +230,9 @@ python -m pytest -q                # 高速ユニットテスト
 python validate.py                 # 解析解との比較 → figures/validation.png
 python validate.py --update-readme # さらにこの README の表を更新
 python demo_2d.py                  # 二重スリット・2D トンネル → figures/*.png, *.gif
+python demo_gpe.py                 # ソリトンの衝突・BEC の干渉 → figures/gpe.png
 python make_gif.py                 # README 冒頭の GIF → figures/hero.gif
+python export_reference.py         # C++/WASM 移植用のリファレンスデータ → reference/
 ruff check .                       # リンタ（CI でも実行）
 ```
 
@@ -203,30 +248,47 @@ print(s.diagnose(psi))             # [] なら警告なし
 psi = s.step(psi, 500)
 ```
 
+```python
+from qwave import FluxDetector
+from qwave.potentials import sech2_barrier
+
+g = Grid(4096, 400)
+s = Solver(g, sech2_barrier(g, 1.5, 0.5), dt=0.02, absorber=True)
+psi = gaussian_packet(g, center=-50, sigma=5, k0=1.6)
+det = FluxDetector(g, position=5.0)
+det.record(s.t, psi)
+psi = s.step(psi, 3000, callback=det.record)
+print(det.transmitted)             # これまでに x = 5 を横切った確率
+```
+
 ### 構成
 
 ```
-qwave/solver.py      Grid, Solver（時間依存 V・complex64・diagnose）, gaussian_packet, 吸収境界
-qwave/eigen.py       虚時間発展による定常状態
-qwave/potentials.py  調和ポテンシャル, 矩形障壁, スリット, 格子, 傾き, ブラシ描画, 格子整合チェック
-qwave/analytic.py    解析解（矩形障壁の透過率, 調和振動子の準位, 強制振動子, ブロッホ周期など）
+qwave/solver.py      Grid, Solver（時間依存 V・GP 方程式・complex64・コールバック・diagnose）, 吸収境界
+qwave/eigen.py       虚時間発展による定常状態・GP 基底状態
+qwave/observables.py 確率流, FluxDetector
+qwave/potentials.py  調和ポテンシャル, 矩形・sech² 障壁, スリット, 格子, 傾き, ブラシ描画, 格子整合チェック
+qwave/analytic.py    解析解（障壁の透過率, 調和振動子, ブロッホ周期, ソリトン, トーマス・フェルミなど）
 validate.py          解析解との比較（図を出力、README の表を更新）
 demo_2d.py           2D デモ
+demo_gpe.py          グロス・ピタエフスキー方程式のデモ
 make_gif.py          README 用 GIF の生成
-tests/               CI 用ユニットテスト
+export_reference.py  移植用リファレンスデータ → reference/
+tests/               CI 用ユニットテスト（リファレンスデータの照合を含む）
 pyproject.toml       パッケージ情報, pytest・ruff の設定
 ```
 
 ### ロードマップ
 
 - [x] Python リファレンス実装と数値検証
-- [ ] C++17 移植（FFT: pocketfft / KissFFT）、Python と結果を突き合わせるテスト
+- [x] 移植版が再現すべきリファレンスデータ（`reference/`）
+- [ ] C++17 移植（FFT: pocketfft / KissFFT）、`reference/` との照合テスト
 - [ ] Emscripten で WebAssembly 化、WebGL2 で描画
 - [ ] マウスでポテンシャルを描画、プリセット（トンネル・二重スリット・散乱）
 - [ ] 性能比較: 純 JS vs WASM vs WASM + SIMD
 - [ ] GitHub Pages で公開
 
-移植にあたっての注意（上の検証結果より）: 単精度で十分（1000 ステップ後の相対誤差 ~10⁻⁵）だがノルムがゆっくりずれるので、吸収層がないときは数百ステップごとに再規格化する（`renormalize_every`）。計算領域は表示領域より大きく取り、波包の初期位置が吸収層にかからないようにする（`make_gif.py` と同様）。硬い壁では V·Δt ≲ 1 に保つ。吸収層の γ_max は典型的な k と層の幅に合わせて決める。数フレームごとに `diagnose` を実行する。
+移植にあたっての注意（上の検証結果より）: 単精度で十分（1000 ステップ後の相対誤差 ~10⁻⁵）だがノルムがゆっくりずれるので、吸収層がないときは数百ステップごとに再規格化する（`renormalize_every`）。計算領域は表示領域より大きく取り、波包の初期位置が吸収層にかからないようにする（`make_gif.py` と同様）。硬い壁では V·Δt ≲ 1 に保つ。吸収層の γ_max は典型的な k と層の幅に合わせて決める。数フレームごとに `diagnose` を実行する。透過率のリアルタイム表示には 4 次差分の確率流（5 本の格子線だけ使用、誤差 ≈ (kΔx)⁴/30）で十分。g ≠ 0 では Δt·k_max²/2 < π を守る。
 
 ---
 

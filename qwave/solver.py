@@ -1,12 +1,19 @@
 """
 Split-step Fourier (Strang splitting) solver for the time-dependent Schrödinger equation.
 
-    i dψ/dt = [ -1/2 ∇² + V(r, t) ] ψ        (units: ħ = m = 1)
+    i dψ/dt = [ -1/2 ∇² + V(r, t) + g |ψ|² ] ψ        (units: ħ = m = 1)
+
+g = 0 is the linear Schrödinger equation; g ≠ 0 the Gross–Pitaevskii / nonlinear Schrödinger
+equation (g > 0 repulsive, g < 0 attractive; ψ normalized to 1, so g includes the atom number).
 
 One step (exactly unitary without absorber; O(dt²) for smooth V):
-    ψ ← e^{-i V dt/2} ψ
+    ψ ← e^{-i (V + g|ψ|²) dt/2} ψ
     ψ ← IFFT[ e^{-i k² dt/2} FFT[ψ] ]
-    ψ ← e^{-i V dt/2} ψ
+    ψ ← e^{-i (V + g|ψ|²) dt/2} ψ
+The nonlinear half-steps are exact (they do not change |ψ|), so the scheme stays unitary and O(dt²).
+But with g ≠ 0 it is only stable for dt · k_max²/2 < π (k_max² summed over the axes; Weideman &
+Herbst 1986): beyond that, grid modes whose kinetic phase per step is a multiple of 2π are pumped by
+the nonlinearity and blow up after a while (validate.py). Solver warns, diagnose() reports it.
 
 For a static potential the closing half-step of one step and the opening half-step of the
 next are merged into a single full-step factor e^{-i V dt}, so n steps cost n + 1 potential
@@ -17,6 +24,8 @@ Works in 1D or 2D (any dimension, via numpy.fft.fftn). This file is the
 reference implementation that the C++/WASM port is tested against.
 """
 from __future__ import annotations
+
+import warnings
 
 import numpy as np
 
@@ -133,10 +142,14 @@ class Solver:
               None (default) or N: rescale ψ to unit norm every N steps. In single precision the norm
               drifts by ~1e-4 per 1000 steps (validate.py), which adds up in a long interactive run.
               Only allowed without absorber, where the norm is supposed to decrease.
+    nonlinearity
+              g of the Gross–Pitaevskii term g|ψ|² (default 0: linear Schrödinger equation).
     """
 
-    def __init__(self, grid: Grid, V, dt, absorber=None, dtype=np.complex128, renormalize_every=None):
+    def __init__(self, grid: Grid, V, dt, absorber=None, dtype=np.complex128, renormalize_every=None,
+                 nonlinearity=0.0):
         self.grid = grid
+        self.nonlinearity = float(nonlinearity)
         self.dtype = np.dtype(dtype)
         if self.dtype.kind != "c":
             raise ValueError(f"dtype must be complex, got {self.dtype}")
@@ -167,10 +180,21 @@ class Solver:
         if not dt > 0:
             raise ValueError(f"dt must be positive, got {dt}")
         self.dt = float(dt)
+        if self.nonlinearity and self.nonlinear_stability_number() > np.pi:
+            warnings.warn(self._instability_message(), RuntimeWarning, stacklevel=2)
         self.kin_phase = np.exp(-0.5j * self.grid.k2 * self.dt).astype(self.dtype)
         self.absorber = (None if self._absorber_args is None
                          else absorbing_mask(self.grid, self.dt, **self._absorber_args))
         self.set_potential(self._V_input)
+
+    def nonlinear_stability_number(self):
+        """dt · k_max²/2: the largest kinetic phase per step. Must stay below π when g ≠ 0."""
+        return self.dt * sum(k**2 for k in self.grid.kmax) / 2
+
+    def _instability_message(self):
+        dt_max = 2 * np.pi / sum(k**2 for k in self.grid.kmax)
+        return (f"nonlinear split-step instability: dt·k_max²/2 = {self.nonlinear_stability_number():.3g} > π "
+                f"with g = {self.nonlinearity:g}; use dt < {dt_max:.3g} or a coarser grid")
 
     def set_potential(self, V):
         """Can be called at any time (e.g. when the user draws a new barrier).
@@ -210,52 +234,93 @@ class Solver:
     def _kinetic(self, psi):
         return np.fft.ifftn(self.kin_phase * np.fft.fftn(psi)).astype(self.dtype, copy=False)
 
-    def step(self, psi, nsteps=1):
+    def _potential_half(self, psi):
+        """e^{-i (V + g|ψ|²) dt/2} ψ for the nonlinear equation (exact: |ψ| is unchanged)."""
+        v = self.V + self.nonlinearity * np.abs(psi) ** 2
+        return np.exp(-0.5j * self.dt * v).astype(self.dtype, copy=False) * psi
+
+    def _finish_step(self, psi, callback, every, observed=None):
+        self.t += self.dt
+        self.nsteps_done += 1
+        if self._renormalize_due():
+            psi = self._renormalize(psi)
+        if callback is not None and self.nsteps_done % every == 0:
+            callback(self.t, psi if observed is None else observed(psi))
+        return psi
+
+    def step(self, psi, nsteps=1, callback=None, every=1):
+        """Advance ψ by `nsteps` steps and return it.
+
+        callback(t, ψ), if given, is called after every `every`-th step (counted over the solver's
+        lifetime) with the wave function at that time — for detectors, recording or live plots.
+        It must not modify the array it receives.
+        """
         psi = np.asarray(psi).astype(self.dtype, copy=False)
         if nsteps <= 0:
             return psi
-        if self.time_dependent:
+        if every < 1:
+            raise ValueError(f"every must be >= 1, got {every}")
+        if self.time_dependent or self.nonlinearity:
             for _ in range(nsteps):
-                self.V = self._eval_V(self.t + 0.5 * self.dt)
-                self._build_potential_factors(self.V)
-                psi = self._half_abs * self._kinetic(self.half_pot_phase * psi)
-                self.t += self.dt
-                self.nsteps_done += 1
-                if self._renormalize_due():
-                    psi = self._renormalize(psi)
-            self.V = self._eval_V(self.t)
+                if self.time_dependent:
+                    self.V = self._eval_V(self.t + 0.5 * self.dt)
+                    self._build_potential_factors(self.V)
+                if self.nonlinearity:
+                    psi = self._potential_half(self._kinetic(self._potential_half(psi)))
+                    if self.absorber is not None:
+                        psi = psi * self.absorber
+                else:
+                    psi = self._half_abs * self._kinetic(self.half_pot_phase * psi)
+                psi = self._finish_step(psi, callback, every)
+            if self.time_dependent:
+                self.V = self._eval_V(self.t)
             return psi
-        # static V: e^{-iVdt/2} K e^{-iVdt/2} · e^{-iVdt/2} K e^{-iVdt/2} ... with adjacent halves merged
-        # (a renormalization is a scalar factor, so it can be applied between the merged factors)
+        # static linear V: e^{-iVdt/2} K e^{-iVdt/2} · e^{-iVdt/2} K e^{-iVdt/2} ... with adjacent halves
+        # merged. Between steps the running array is e^{-iVdt/2} ψ(t), so an observer gets it multiplied
+        # back by e^{+iVdt/2}; a renormalization is a scalar factor and can be applied at any point.
         psi = self.half_pot_phase * psi
+        undo_half = np.conj(self.half_pot_phase) if callback is not None else None
         for i in range(nsteps):
             psi = self._kinetic(psi)
-            psi = (self._full_abs if i < nsteps - 1 else self._half_abs) * psi
-            self.nsteps_done += 1
-            if self._renormalize_due():
-                psi = self._renormalize(psi)
-        self.t += nsteps * self.dt
+            if i < nsteps - 1:
+                psi = self._full_abs * psi
+                psi = self._finish_step(psi, callback, every, observed=lambda p: undo_half * p)
+            else:
+                psi = self._half_abs * psi
+                psi = self._finish_step(psi, callback, every)
         return psi
 
     # --- diagnostics -------------------------------------------------------
     def energy(self, psi):
-        """⟨H⟩ = ⟨T⟩ + ⟨V⟩ at the current time, kinetic part evaluated in k-space."""
+        """Energy per particle at the current time, E = ⟨T⟩ + ⟨V⟩ + (g/2)∫|ψ|⁴ for normalized ψ
+        (the kinetic part evaluated in k-space). Conserved by the exact dynamics."""
+        return self._energy_terms(psi, interaction_weight=0.5)
+
+    def chemical_potential(self, psi):
+        """μ = ⟨T⟩ + ⟨V⟩ + g∫|ψ|⁴: the eigenvalue of a stationary state, ψ(t) = e^{-iμt} ψ(0).
+        Equals energy() for g = 0."""
+        return self._energy_terms(psi, interaction_weight=1.0)
+
+    def _energy_terms(self, psi, interaction_weight):
         g = self.grid
         psi = np.asarray(psi, dtype=complex)
+        rho = np.abs(psi) ** 2
         phik = np.fft.fftn(psi)
         # Parseval: Σ|ψ|² dV = Σ|φ|² dV / N_total
         ekin = 0.5 * np.sum(g.k2 * np.abs(phik) ** 2) * g.dV / psi.size
-        epot = np.sum(self.V * np.abs(psi) ** 2) * g.dV
-        return float((ekin + epot) / g.norm(psi))
+        epot = np.sum(self.V * rho) * g.dV
+        eint = interaction_weight * self.nonlinearity * np.sum(rho**2) * g.dV
+        return float((ekin + epot + eint) / g.norm(psi))
 
     def diagnose(self, psi, tol=1e-6, max_loss_rate=1e-4):
         """Sanity checks for the current ψ; returns a list of human-readable problems (empty = OK).
 
-        * max |V|·dt where ψ actually is: above ~1 the splitting error grows quickly at hard walls
+        * max |V + g|ψ|²|·dt where ψ actually is: above ~1 the splitting error grows quickly at hard walls
           (make_gif.py: V = 200 with dt = 0.01 gives ~17 % density error, dt = 0.005 gives 0.3 %).
         * momentum content near the Nyquist limit k_max = π/dx: if more than `tol` of |φ(k)|² lies
           beyond 2/3 k_max on any axis, the grid is too coarse for this ψ (aliasing) — or ψ does not
           vanish at the periodic box edge, and the jump there shows up as high-k content.
+        * with g ≠ 0: the stability limit dt · k_max²/2 < π of the nonlinear split-step method.
         * at t = 0 only: how fast the absorbing layer is already eating the initial state
           (more than `max_loss_rate` of the probability per unit time).
         Call it on the initial state and, for interactive use, every few frames.
@@ -264,10 +329,13 @@ class Solver:
         issues = []
         rho = np.abs(psi) ** 2
         present = rho > tol * rho.max()
-        vdt = float(np.max(np.abs(self.V[present]))) * self.dt if present.any() else 0.0
+        v_eff = self.V + self.nonlinearity * rho
+        vdt = float(np.max(np.abs(v_eff[present]))) * self.dt if present.any() else 0.0
         if vdt > 1 + 1e-9:
-            issues.append(f"max|V|·dt = {vdt:.3g} > 1 where ψ is non-negligible: "
-                          f"reduce dt below {self.dt / vdt:.3g} or lower the walls")
+            issues.append(f"max|V + g|ψ|²|·dt = {vdt:.3g} > 1 where ψ is non-negligible: "
+                          f"reduce dt below {self.dt / vdt:.3g} or lower the walls / interaction")
+        if self.nonlinearity and self.nonlinear_stability_number() > np.pi:
+            issues.append(self._instability_message())
         pk = np.abs(np.fft.fftn(psi)) ** 2
         pk /= pk.sum()
         for axis, (k, kmax) in enumerate(zip(g.k, g.kmax)):

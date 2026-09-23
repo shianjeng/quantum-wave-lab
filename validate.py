@@ -12,6 +12,10 @@ Numerical validation against analytic results (ħ = m = 1).
   8. Time-step convergence order: O(dt²) for smooth (also time-dependent) V, O(dt) at sharp edges;
      single precision (complex64) vs double
   9. Absorbing boundary: residual (reflected + wrapped) probability vs wavenumber
+ 10. Flux detector: live transmission through a smooth sech² barrier (exact T(E)), unaffected by
+     the absorber; spectral vs 4th-order finite-difference current
+ 11. Gross–Pitaevskii: moving bright soliton (exact solution), O(dt²), energy
+ 12. Gross–Pitaevskii ground state (imaginary time): Thomas–Fermi limit, stationary in real time
 
 Run:  python validate.py                  (writes figures/validation.png, exits non-zero on failure)
       python validate.py --update-readme  (also rewrites the error tables in README.md)
@@ -26,9 +30,30 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from qwave.analytic import T_packet, T_rect, bloch_period, driven_ho_x, fringe_period_ky, ho_levels
+from qwave.analytic import (
+    T_packet,
+    T_rect,
+    T_sech2,
+    bloch_period,
+    bright_soliton,
+    bright_soliton_energy,
+    driven_ho_x,
+    fringe_period_ky,
+    ho_levels,
+    thomas_fermi_mu_1d,
+)
 from qwave.eigen import eigenstates, ground_state
-from qwave.potentials import check_on_grid, cosine_lattice, double_slit, harmonic, rect_barrier, slits, tilt
+from qwave.observables import FluxDetector
+from qwave.potentials import (
+    check_on_grid,
+    cosine_lattice,
+    double_slit,
+    harmonic,
+    rect_barrier,
+    sech2_barrier,
+    slits,
+    tilt,
+)
 from qwave.solver import Grid, Solver, absorber_residual, gaussian_packet
 
 results = []          # (name_en, name_ja, error, tol, ok)
@@ -40,7 +65,7 @@ def check(name, name_ja, err, tol):
     print(f"[{'PASS' if ok else 'FAIL'}] {name}: error = {err:.2e} (tol {tol:.2g})")
 
 
-fig, axs = plt.subplots(3, 3, figsize=(15, 12))
+fig, axs = plt.subplots(4, 3, figsize=(15, 16))
 
 # ---------------------------------------------------------------- 1. norm (2D)
 g = Grid((256, 256), (40, 40))
@@ -278,6 +303,82 @@ check("Absorbing layer, residual (reflected + wrapped) probability for 1 ≤ k �
       "吸収層の残存確率（反射＋折り返し）、1 ≤ k ≤ 8", wide[(ks >= 1) & (ks <= 8)].max(), 1e-5)
 axs[2, 2].set(title="9. Absorbing layer: residual probability", xlabel="k", ylabel="reflected + wrapped")
 axs[2, 2].legend(fontsize=8)
+
+# ---------------------------------------------------------------- 10. flux detector
+# Smooth barrier (exact T(E) known) in a box whose absorber eats the transmitted packet before the end:
+# summing |ψ|² behind the barrier then fails, integrating the probability current through a line does not.
+V0, w, sigma, k0 = 1.5, 0.5, 10.0, 1.6
+g = Grid(2**13, 2**13 * 0.05)                        # L = 409.6
+x = g.x[0]
+s = Solver(g, sech2_barrier(g, V0, w), dt=0.02, absorber=dict(width=40.0, gamma_max=1.0))
+psi = gaussian_packet(g, -100, sigma, k0)
+det, det_fd4 = FluxDetector(g, 10.0), FluxDetector(g, 10.0, method="fd4")
+det.record(0, psi); det_fd4.record(0, psi)
+ts, T_live, P_behind = [0.0], [0.0], [0.0]
+for _ in range(125):                                 # t = 250: the transmitted packet is absorbed from t ≈ 160 on
+    psi = s.step(psi, 100, callback=lambda t, p: (det.record(t, p), det_fd4.record(t, p)))
+    ts.append(s.t); T_live.append(det.transmitted)
+    P_behind.append(np.sum(np.abs(psi[x >= det.position]) ** 2) * g.dV)
+T_exact = T_packet(k0, sigma, V0, w, T=T_sech2)
+check("Flux detector: transmission through a sech² barrier vs exact T(E), absorber active",
+      "フラックス検出器: sech² 障壁の透過率と厳密解（吸収層あり）", abs(det.transmitted - T_exact), 2e-4)
+check("Flux detector: 4th-order finite-difference vs spectral current",
+      "フラックス検出器: 4 次差分と スペクトル法の電流の差", abs(det_fd4.transmitted - det.transmitted), 1e-5)
+axs[3, 0].plot(ts, T_live, lw=2, label="∫ flux dt (detector at x = 10)")
+axs[3, 0].plot(ts, P_behind, "--", label="Σ|ψ|² behind the barrier")
+axs[3, 0].axhline(T_exact, c="k", ls=":", label=f"exact T = {T_exact:.4f}")
+axs[3, 0].set(title="10. Live transmission (absorber eats the packet)", xlabel="t", ylabel="probability")
+axs[3, 0].legend(fontsize=8, loc="center right")
+
+# ---------------------------------------------------------------- 11. bright soliton
+gnl, v, T_end = -2.0, 1.0, 20.0
+g = Grid(1024, 102.4)
+x = g.x[0]
+psi0 = bright_soliton(x, 0.0, gnl, v, x0=-20)
+sol_err = []
+for dt in (0.004, 0.002, 0.001):
+    s = Solver(g, np.zeros(g.n), dt, nonlinearity=gnl)
+    psi = s.step(psi0, int(round(T_end / dt)))
+    sol_err.append(np.sqrt(g.norm(psi - bright_soliton(x, T_end, gnl, v, x0=-20))))
+check("Bright soliton (Gross–Pitaevskii, g < 0) vs exact solution at t = 20 (L2)",
+      "明るいソリトン（GP 方程式, g < 0）と厳密解の差、t = 20（L2）", sol_err[1], 1e-4)
+check("Bright soliton: convergence order in dt: |p − 2|", "明るいソリトン: 時間刻みの収束次数 |p − 2|",
+      abs(np.log2(sol_err[0] / sol_err[1]) - 2), 0.05)
+check("Bright soliton: energy vs v²/2 − g²/24 (relative)", "明るいソリトン: エネルギーと v²/2 − g²/24 の差（相対）",
+      abs(s.energy(psi) - bright_soliton_energy(gnl, v)) / abs(bright_soliton_energy(gnl, v)), 1e-8)
+for t_snap in (0.0, 10.0, 20.0):
+    exact = np.abs(bright_soliton(x, t_snap, gnl, v, x0=-20)) ** 2
+    axs[3, 1].plot(x, exact, "k-", lw=3, alpha=0.3)
+s = Solver(g, np.zeros(g.n), 0.002, nonlinearity=gnl)
+psi = psi0
+for t_snap in (0.0, 10.0, 20.0):
+    psi = s.step(psi, int(round((t_snap - s.t) / s.dt)))
+    axs[3, 1].plot(x[::6], np.abs(psi[::6]) ** 2, "o", ms=3, label=f"t = {t_snap:g}")
+axs[3, 1].set(title=f"11. Bright soliton, g = {gnl:g}, v = {v:g} (grey: exact)", xlabel="x", ylabel="|ψ|²",
+              xlim=(-30, 10))
+axs[3, 1].legend(fontsize=8)
+
+# ---------------------------------------------------------------- 12. GP ground state
+gnl = 500.0
+g = Grid(256, 40)
+x = g.x[0]
+mu, psi0 = ground_state(g, harmonic(g), dtau=0.002, nonlinearity=gnl)
+mu_tf = thomas_fermi_mu_1d(gnl)
+check(f"Gross–Pitaevskii ground state, μ vs Thomas–Fermi limit (relative; g = {gnl:g}, μ ≈ {mu:.0f}ω)",
+      f"GP 方程式の基底状態、μ とトーマス・フェルミ極限の差（相対、g = {gnl:g}, μ ≈ {mu:.0f}ω）",
+      abs(mu - mu_tf) / mu_tf, 1e-3)
+s = Solver(g, harmonic(g), 0.005, nonlinearity=gnl)
+psi = s.step(psi0, 2000)                             # t = 10
+overlap = np.sum(np.conj(psi0) * psi) * g.dV         # should be e^{-iμt}
+check("Gross–Pitaevskii ground state is stationary: 1 − |⟨ψ(0)|ψ(10)⟩| and phase error of e^{−iμt}",
+      "GP 基底状態の定常性: 1 − |⟨ψ(0)|ψ(10)⟩| と位相 e^{−iμt} のずれ",
+      max(1 - abs(overlap), abs(np.angle(overlap * np.exp(1j * mu * s.t)))), 1e-5)
+axs[3, 2].plot(x, np.maximum(mu_tf - harmonic(g), 0) / gnl, "k-", lw=3, alpha=0.3, label="Thomas–Fermi")
+axs[3, 2].plot(x, np.abs(psi0) ** 2, label="imaginary time, t = 0")
+axs[3, 2].plot(x[::4], np.abs(psi[::4]) ** 2, "o", ms=3, label="after real-time t = 10")
+axs[3, 2].set(title=f"12. GP ground state, g = {gnl:g} (μ = {mu:.3f}, TF {mu_tf:.3f})", xlabel="x",
+              ylabel="|ψ|²", xlim=(-15, 15))
+axs[3, 2].legend(fontsize=8)
 
 fig.tight_layout()
 os.makedirs("figures", exist_ok=True)

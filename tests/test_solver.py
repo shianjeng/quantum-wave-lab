@@ -218,10 +218,102 @@ def test_diagnose_flags_problems():
     wall = paint_disk(np.zeros(g.n), g, (0, 0), 2.0, 200.0)
     # packet sitting on a hard wall with a too-large dt
     msgs = Solver(g, wall, 0.01).diagnose(gaussian_packet(g, (-2, 0), 1.0, (0, 0)))
-    assert any("V|·dt" in m for m in msgs)
+    assert any("|·dt = " in m for m in msgs)
     # momentum close to the Nyquist limit
     msgs = Solver(g, np.zeros(g.n), 0.005).diagnose(gaussian_packet(g, (-5, 0), 1.0, (20, 0)))
     assert any("k_max" in m for m in msgs)
     # initial packet overlapping the absorbing layer
     msgs = Solver(g, np.zeros(g.n), 0.005, absorber=True).diagnose(gaussian_packet(g, (-8.5, 0), 1.0, (2, 0)))
     assert any("absorbing layer" in m for m in msgs)
+
+
+# ---------------------------------------------------------------- observers and flux
+def test_callback_sees_the_true_state_between_merged_steps():
+    g = Grid(512, 30)
+    V = harmonic(g) + rect_barrier(g, 3.0, 1.0)
+    psi0 = gaussian_packet(g, -5, 1.0, 2.0)
+    seen = {}
+    Solver(g, V, 0.01, absorber=True).step(psi0, 30, callback=lambda t, p: seen.setdefault(round(t, 9), p.copy()),
+                                          every=10)
+    ref, psi = Solver(g, V, 0.01, absorber=True), psi0
+    for n in (10, 20, 30):
+        psi = ref.step(psi, 10)
+        assert np.max(np.abs(seen[round(n * 0.01, 9)] - psi)) < 1e-12
+    with pytest.raises(ValueError):
+        Solver(g, V, 0.01).step(psi0, 5, callback=print, every=0)
+
+
+def test_flux_detector_counts_a_free_packet_once():
+    from qwave.observables import FluxDetector
+    g = Grid(4096, 400)
+    psi = gaussian_packet(g, -50, 5.0, 2.0)
+    s = Solver(g, np.zeros(g.n), 0.02)
+    dets = [FluxDetector(g, 0.0), FluxDetector(g, 0.0, method="fd4")]
+    for d in dets:
+        d.record(0.0, psi)
+    s.step(psi, 3000, callback=lambda t, p: [d.record(t, p) for d in dets])
+    assert abs(dets[0].transmitted - 1) < 1e-9
+    assert abs(dets[1].transmitted - 1) < 1e-4                  # fd4: ≈ (k dx)⁴/30 = 5e-5 here
+
+
+def test_flux_matches_analytic_sech2_transmission():
+    from qwave.analytic import T_packet, T_sech2
+    from qwave.observables import FluxDetector
+    from qwave.potentials import sech2_barrier
+    g = Grid(2**13, 2**13 * 0.05)
+    s = Solver(g, sech2_barrier(g, 1.5, 0.5), 0.02, absorber=dict(width=40.0, gamma_max=1.0))
+    psi = gaussian_packet(g, -100, 10.0, 1.6)
+    det = FluxDetector(g, 10.0)
+    det.record(0.0, psi)
+    s.step(psi, 8000, callback=det.record)
+    assert abs(det.transmitted - T_packet(1.6, 10.0, 1.5, 0.5, T=T_sech2)) < 2e-4
+
+
+def test_flux_per_slit_is_symmetric_and_adds_up():
+    from qwave.observables import FluxDetector
+    g = Grid((256, 256), (40, 40))
+    s = Solver(g, double_slit(g, wall_x=0.0, height=50), 0.01)
+    yc = -g.dx[1] / 2                                           # the on-grid slits are symmetric about -dy/2
+    psi = gaussian_packet(g, (-8, yc), (1.5, 3.0), (4, 0))
+    upper = FluxDetector(g, 1.0, span=(yc, 20.0))
+    lower = FluxDetector(g, 1.0, span=(-20.0, yc))
+    total = FluxDetector(g, 1.0)
+    for d in (upper, lower, total):
+        d.record(0.0, psi)
+    s.step(psi, 300, callback=lambda t, p: [d.record(t, p) for d in (upper, lower, total)])
+    assert upper.transmitted > 0.01
+    assert abs(upper.transmitted - lower.transmitted) < 1e-10
+    assert abs(upper.transmitted + lower.transmitted - total.transmitted) < 1e-12
+
+
+# ---------------------------------------------------------------- Gross–Pitaevskii
+def test_bright_soliton_keeps_its_shape():
+    from qwave.analytic import bright_soliton, bright_soliton_energy
+    g = Grid(1024, 102.4)
+    x = g.x[0]
+    s = Solver(g, np.zeros(g.n), 0.002, nonlinearity=-2.0)
+    psi = s.step(bright_soliton(x, 0, -2.0, 1.0, x0=-10), 2500)     # t = 5
+    assert np.sqrt(g.norm(psi - bright_soliton(x, 5.0, -2.0, 1.0, x0=-10))) < 1e-5
+    assert abs(s.energy(psi) - bright_soliton_energy(-2.0, 1.0)) < 1e-9
+
+
+def test_gp_ground_state_is_stationary_and_near_thomas_fermi():
+    from qwave.analytic import thomas_fermi_mu_1d
+    g = Grid(256, 40)
+    mu, psi0 = eigenstates(g, harmonic(g), 1, dtau=0.002, nonlinearity=500.0)
+    mu, psi0 = float(mu[0]), psi0[0]
+    assert abs(mu - thomas_fermi_mu_1d(500.0)) / mu < 1e-3
+    s = Solver(g, harmonic(g), 0.005, nonlinearity=500.0)
+    assert abs(s.chemical_potential(psi0) - mu) < 1e-9
+    overlap = np.sum(np.conj(psi0) * s.step(psi0, 400)) * g.dV
+    assert abs(overlap - np.exp(-1j * mu * s.t)) < 1e-6
+    with pytest.raises(ValueError):
+        eigenstates(g, harmonic(g), 2, nonlinearity=1.0)
+
+
+def test_nonlinear_instability_is_reported():
+    g = Grid(1024, 40)                                          # k_max ≈ 80: dt·k_max²/2 ≈ 16 > π
+    with pytest.warns(RuntimeWarning, match="instability"):
+        s = Solver(g, harmonic(g), 0.005, nonlinearity=100.0)
+    assert any("instability" in m for m in s.diagnose(gaussian_packet(g, 0, 1.0, 0)))
+    Solver(g, harmonic(g), 0.0005, nonlinearity=100.0)          # below the limit: no warning
