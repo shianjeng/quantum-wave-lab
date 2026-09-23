@@ -45,13 +45,13 @@ def cases():
     yield ("soliton_gp_1d", g, np.zeros(g.n), bright_soliton(g.x[0], 0.0, -2.0, 1.0, x0=-10.0), 0.002, None, -2.0,
            [], "Gross–Pitaevskii bright soliton, g = -2, v = 1")
 
-    g = Grid((128, 128), (32.0, 32.0))
+    g = Grid((128, 128), (32.0, 32.0))                       # dy = 0.25: slits 5 cells wide, 20 cells off-centre
     yield ("double_slit_2d", g, double_slit(g, wall_x=-2.0, thickness=0.5, slit_width=1.25, slit_sep=5.0, height=50.0),
            gaussian_packet(g, (-7.0, 0.0), (1.25, 3.0), (4.0, 0.0)), 0.005, dict(width=2.56, gamma_max=10.0), 0.0,
-           [dict(position=0.0, method="spectral", span=(0.0, 16.0)),
-            dict(position=0.0, method="spectral", span=(-16.0, 0.0))],
-           "double slit with absorbing layer, flux detectors behind the upper / lower half (the on-grid slits "
-           "are mirror-symmetric about y = -dy/2, not y = 0, so the two halves differ by a few %)")
+           [dict(position=0.0, method="spectral", span=(0.125, 15.9)),
+            dict(position=0.0, method="spectral", span=(-15.9, -0.125))],
+           "double slit with absorbing layer, flux detectors behind the upper / lower half (mirror images of "
+           "each other, leaving out the centre row y = 0 and the edge row y = -16, so the two agree)")
 
 
 def rel_l2(a, b):

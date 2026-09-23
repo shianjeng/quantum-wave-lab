@@ -174,8 +174,21 @@ def test_smooth_barrier_has_same_area():
 def test_slits_generalizes_double_slit():
     g = Grid((160, 160), (20, 20))
     assert np.array_equal(slits(g, (2.5, -2.5)), double_slit(g))
-    single = slits(g, (0.0,), slit_width=1.25)
-    assert np.count_nonzero(single == 0) - np.count_nonzero(slits(g, ()) == 0) == 4 * 10  # 4 x 10 cells open
+    single = slits(g, (0.0,), slit_width=1.125)
+    assert np.count_nonzero(single == 0) - np.count_nonzero(slits(g, ()) == 0) == 4 * 9   # 4 x 9 cells open
+
+
+def test_slits_are_mirror_symmetric_and_exact():
+    g = Grid((160, 160), (20, 20))                              # dy = 0.125
+    V = double_slit(g, slit_width=1.125, slit_sep=5.0)
+    n = g.n[1]
+    assert all(np.array_equal(V[:, j], V[:, (n - j) % n]) for j in range(n))
+    wall_column = V[np.flatnonzero(V.any(axis=1))[0]]
+    open_y = g.axes[1][wall_column == 0]
+    upper = open_y[open_y > 0]
+    assert len(upper) == 9 and abs(upper.mean() - 2.5) < 1e-12  # 9 cells, centred exactly at +d/2
+    with pytest.raises(ValueError, match="1.125 or 1.375"):
+        double_slit(g, slit_width=1.25, slit_sep=5.0)          # edges would fall on grid points
 
 
 def test_check_on_grid_rejects_off_grid_lengths():
@@ -208,7 +221,7 @@ def test_imaginary_time_gives_ho_levels():
 
 # ---------------------------------------------------------------- diagnostics
 def test_diagnose_clean_setup():
-    g = Grid((256, 256), (40, 40))
+    g = Grid((320, 320), (40, 40))
     s = Solver(g, double_slit(g, height=50), 0.01, absorber=True)
     assert s.diagnose(gaussian_packet(g, (-10, 0), 1.5, (4, 0))) == []
 
@@ -271,19 +284,19 @@ def test_flux_matches_analytic_sech2_transmission():
 
 def test_flux_per_slit_is_symmetric_and_adds_up():
     from qwave.observables import FluxDetector
-    g = Grid((256, 256), (40, 40))
+    g = Grid((320, 320), (40, 40))
     s = Solver(g, double_slit(g, wall_x=0.0, height=50), 0.01)
-    yc = -g.dx[1] / 2                                           # the on-grid slits are symmetric about -dy/2
-    psi = gaussian_packet(g, (-8, yc), (1.5, 3.0), (4, 0))
-    upper = FluxDetector(g, 1.0, span=(yc, 20.0))
-    lower = FluxDetector(g, 1.0, span=(-20.0, yc))
+    psi = gaussian_packet(g, (-8, 0), (1.5, 3.0), (4, 0))
+    # mirror-image spans: skip the row y = 0 (behind the wall) and the edge row y = -20 (its own mirror)
+    upper = FluxDetector(g, 1.0, span=(0.0625, 19.9))
+    lower = FluxDetector(g, 1.0, span=(-19.9, -0.0625))
     total = FluxDetector(g, 1.0)
     for d in (upper, lower, total):
         d.record(0.0, psi)
     s.step(psi, 300, callback=lambda t, p: [d.record(t, p) for d in (upper, lower, total)])
     assert upper.transmitted > 0.01
     assert abs(upper.transmitted - lower.transmitted) < 1e-10
-    assert abs(upper.transmitted + lower.transmitted - total.transmitted) < 1e-12
+    assert upper.transmitted + lower.transmitted <= total.transmitted + 1e-12
 
 
 # ---------------------------------------------------------------- Gross–Pitaevskii

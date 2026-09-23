@@ -26,7 +26,9 @@ jobs:
           cache-dependency-path: pyproject.toml
       - run: pip install -e ".[dev]"
       - run: python -m pytest -q
-      # the full validation takes a few minutes; once is enough
+      # every check on every version; the full run with the figure (~25 s on 4 cores) once
+      - if: matrix.python-version != '3.12'
+        run: python validate.py --quick
       - if: matrix.python-version == '3.12'
         run: python validate.py
       - if: matrix.python-version == '3.12'

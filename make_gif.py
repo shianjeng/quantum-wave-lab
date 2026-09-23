@@ -39,7 +39,7 @@ CMAP = colormaps["inferno"]
 
 g = Grid((N, N), (L, L))
 x, y = g.x
-check_on_grid(g.dx[0], 1.0, 0.5, 1.25, 5.0, 4.0)
+check_on_grid(g.dx[0], 1.0, 0.5, 1.125, 5.0, 4.0)
 
 
 def scenario_tunneling():
@@ -48,7 +48,7 @@ def scenario_tunneling():
 
 
 def scenario_double_slit():
-    V = double_slit(g, wall_x=-4, thickness=0.5, slit_width=1.25, slit_sep=5.0, height=200)
+    V = double_slit(g, wall_x=-4, thickness=0.5, slit_width=1.125, slit_sep=5.0, height=200)
     return "Double slit", V, gaussian_packet(g, (-13, 0), (2.0, 3.5), (4.0, 0))
 
 

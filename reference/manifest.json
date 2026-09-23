@@ -229,7 +229,7 @@
     },
     {
       "name": "double_slit_2d",
-      "description": "double slit with absorbing layer, flux detectors behind the upper / lower half (the on-grid slits are mirror-symmetric about y = -dy/2, not y = 0, so the two halves differ by a few %)",
+      "description": "double slit with absorbing layer, flux detectors behind the upper / lower half (mirror images of each other, leaving out the centre row y = 0 and the edge row y = -16, so the two agree)",
       "ndim": 2,
       "n": [
         128,
@@ -254,16 +254,16 @@
           "position": 0.0,
           "method": "spectral",
           "span": [
-            0.0,
-            16.0
+            0.125,
+            15.9
           ]
         },
         {
           "position": 0.0,
           "method": "spectral",
           "span": [
-            -16.0,
-            0.0
+            -15.9,
+            -0.125
           ]
         }
       ],
@@ -280,8 +280,8 @@
           "norm": 0.9999998743944082,
           "energy": 8.097149344351251,
           "flux_transmitted": [
-            3.2597561314838727e-10,
-            3.0898131398513295e-10
+            3.089813036386411e-10,
+            3.089813036386357e-10
           ]
         },
         {
@@ -291,8 +291,8 @@
           "norm": 0.9999961195721527,
           "energy": 8.096896564045364,
           "flux_transmitted": [
-            2.4030138406745526e-05,
-            2.234990339655908e-05
+            2.2349900997260062e-05,
+            2.2349900997260096e-05
           ]
         },
         {
@@ -302,8 +302,8 @@
           "norm": 0.33770650627617765,
           "energy": 7.226282851437285,
           "flux_transmitted": [
-            0.13455605509183718,
-            0.13079445587544722
+            0.13079444525150233,
+            0.1307944452515035
           ]
         }
       ],

@@ -51,8 +51,8 @@ def run(V, psi0, snapshot_times, dt=0.01, absorber=ABSORBER):
 
 
 # ---------------------------------------------------------------- double slit
-check_on_grid(g.dx[0], 5.0, 0.5, 1.25, 5.0)
-V = double_slit(g, wall_x=-5, thickness=0.5, slit_width=1.25, slit_sep=5.0, height=200)
+check_on_grid(g.dx[0], 5.0, 0.5, 1.125, 5.0)
+V = double_slit(g, wall_x=-5, thickness=0.5, slit_width=1.125, slit_sep=5.0, height=200)
 psi0 = gaussian_packet(g, (-17, 0), (2.0, 4.0), (4.0, 0))   # clear of the absorbing layer
 times = [0, 3.0, 5.0, 8.0]
 DT_SLIT = 0.005                                            # V·dt = 1 at the hard walls (dt = 0.01 is too coarse)
