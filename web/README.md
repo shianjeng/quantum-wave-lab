@@ -5,7 +5,7 @@
 <a id="english"></a>
 ## English
 
-A static site with no build step: `index.html`, `style.css` and five plain scripts. Open `index.html` directly, or serve the folder:
+A static site with no build step: `index.html`, `style.css` and six plain scripts. Open `index.html` directly, or serve the folder:
 
 ```bash
 python -m http.server --directory web 8000     # then open http://localhost:8000
@@ -15,6 +15,11 @@ GitHub Pages publishes it with `.github/workflows/pages.yml` (one-time setup: Se
 
 ### What the page does
 
+- **Layout:** the field is the centre of the page. Readouts sit as a HUD on it, the main actions in a dock below, and settings in tabs (Scenes, Draw, Wave, View, Data). The scene gallery shows real simulation thumbnails, computed in the page at 128² in idle time and cached in `localStorage`.
+- **Guided tour:** 7 steps on the first visit (the ★ Tour button replays it): wave packet → tunneling → double slit → one particle at a time → momentum space → 3D → your turn.
+- **One particle at a time:** detections appear on a screen at x = 15, one dot each. Every dot is drawn from the time-integrated probability current that has reached the screen (`FluxDetector.profile`, `sampleProfile`), and the interference fringes build up as in Tonomura's electron experiment. An orange histogram shows the pattern they converge to; for the double slit its maxima are at 0, ±5.8, ±13.4 (λD/d ≈ 5.65).
+- **3D view (WebGL2):** |ψ| as a lit height field with the colours of the 2D view. Walls appear as ridges. Drag to rotate, scroll to zoom; it turns slowly when idle. It renders offscreen and is copied onto the visible canvas, so PNG export and recording work in 3D too.
+- **Colour maps:** Inferno, Viridis and Ice. **Fullscreen** (F) for presentations.
 - **10 scenes** with a short explanation each: tunneling, resonant tunneling, single slit, double slit, grating, scattering, harmonic trap, quantum corral, BEC interference, empty box.
 - **Drawing:** draw and erase walls (Shift + drag for straight walls), with undo/redo. You can also launch a packet by dragging, and move the flux detector.
 - **Views:** position (|ψ|, |ψ|², or phase as colour) or momentum (|φ(k)|², where diffraction orders and far-field fringes appear). There is optional auto brightness.
@@ -31,7 +36,8 @@ js/qwave.js    solver: FFT, Grid, Solver (float32/float64, absorber, g|ψ|², me
                diagnose, imaginary-time ground state; a port of the Python package qwave 0.3.0
 js/scenes.js   scene definitions (walls, background, packet, detector, verified numbers for the texts)
 js/share.js    share links: app state <-> URL-safe string
-js/app.js      the page: drawing, launching, rendering, contour lines, measurements, export, checks
+js/app.js      the page: drawing, launching, rendering, contour lines, particles, tour, gallery, export, checks
+js/surface3d.js  the 3D view (WebGL2 height field, orbit camera)
 js/i18n.js     UI strings (English / 日本語)
 test/          node --test: reference data, scenes, share links, measurement / momentum space
 ```
@@ -55,7 +61,7 @@ CI runs them on every push (~40 s).
 - **Time step**: Δt = 0.01, so that V·Δt ≤ 1 for walls up to V = 100 (the wall-height slider goes to 200 to show the warning). With g > 0, Δt is lowered to 0.9 × 2π/Σk_max² for stability.
 - **Walls**: the brush has a soft one-cell edge. Slit openings are placed symmetrically on the grid at every resolution.
 - **Transmission**: a spectral flux detector, sampled once per frame. It matches the region sum to ~0.2 % for the double slit, whereas the 4th-order finite difference would be ~1 % low at kΔx = 0.8.
-- **Checks**: `diagnose()` runs at every launch (strict) and every 60 frames (1e-3 threshold for the high-k content, because hard walls always scatter a harmless trace there).
+- **Checks**: `diagnose()` runs at every launch (strict) and every 60 frames. While the wave runs, high-k content only counts if it exceeds 1e-4 of the launched probability: hard walls always scatter a harmless ~1e-5, which relative thresholds would flag as the box empties. With less than 1 % left in the box, the checks and ⟨E⟩ pause.
 - **V = ⟨E⟩ line**: drawn only if the drawn walls stay below 4⟨E⟩ (barriers, traps); around hard walls it would only trace the walls.
 - **Share links**: stroke points are stored on a 0.05 lattice (finer than the finest grid), and the live drawing uses the same lattice, so a shared drawing is rasterized identically. When the grid resolution changes, the strokes are re-rasterized rather than resampled.
 - **BEC scene**: the ground state is prepared by imaginary time with dτ = 0.04 (~330 steps, ~2 s); it differs from a dτ = 0.005 state by ~6 × 10⁻⁵.
@@ -77,6 +83,11 @@ GitHub Pages へは `.github/workflows/pages.yml` で公開します（初回の
 
 ### できること
 
+- **レイアウト**: フィールドが主役です。計測値はフィールド上の HUD に、主な操作は下のドックに、設定はタブ（シーン・描画・波束・表示・データ）にまとめています。シーン一覧のサムネイルは、ページ内で 128² の格子を使って空き時間に計算した本物のシミュレーション結果で、`localStorage` にキャッシュします。
+- **ガイドツアー**: 初回訪問時に 7 ステップ（★ ツアーでいつでも再生）: 波束 → トンネル効果 → 二重スリット → 粒子を 1 個ずつ → 運動量空間 → 3D → あなたの番。
+- **粒子を 1 個ずつ**: x = 15 のスクリーンに、検出が 1 個ずつ点として現れます。点はスクリーンに届いた確率流の時間積分（`FluxDetector.profile`、`sampleProfile`）に従って選ばれ、外村彰らの電子の実験のように干渉縞が積み上がっていきます。オレンジのヒストグラムは点が収束していく先の分布です。二重スリットでは極大が 0、±5.8、±13.4 にあります（λD/d ≈ 5.65）。
+- **3D 表示（WebGL2）**: |ψ| を光の当たった地形として、2D と同じ色で表示します。壁は尾根になります。ドラッグで回転、スクロールで拡大縮小し、操作しないとゆっくり回ります。画面外で描画してから表示中のキャンバスにコピーするので、3D でも PNG 保存や録画ができます。
+- **カラーマップ**: Inferno・Viridis・Ice。発表用の**全画面表示**（F）。
 - **10 のシーン**（それぞれ短い解説つき）: トンネル効果、共鳴トンネル、単スリット、二重スリット、回折格子、散乱、調和ポテンシャル、量子の囲い、BEC の干渉、空の箱。
 - **描画**: 壁を描く・消す（Shift + ドラッグで直線）、元に戻す/やり直す。ドラッグで波束を発射し、確率流検出器を動かせます。
 - **表示**: 位置（|ψ|、|ψ|²、位相の色表示）と運動量（|φ(k)|²。回折次数や遠方の干渉縞が見える）の切り替え。明るさの自動調整もできます。
@@ -105,7 +116,7 @@ CI で毎 push 実行します（約 40 秒）。
 - **時間刻み**: Δt = 0.01。V = 100 までの壁で V·Δt ≤ 1 になります（壁の高さのスライダーは警告を見せるために 200 まであります）。g > 0 では安定条件のため Δt を 0.9 × 2π/Σk_max² まで下げます。
 - **壁**: ブラシの縁は 1 セル分だけ柔らかくしています。スリットの開口はどの格子でも対称に配置します。
 - **透過率**: スペクトル法の確率流検出器を 1 フレームに 1 回サンプリングします。二重スリットでは領域の和と ~0.2% で一致します（4 次差分だと kΔx = 0.8 で ~1% 小さくなります）。
-- **チェック**: `diagnose()` を発射時（厳しい基準）と 60 フレームごとに実行します（硬い壁は高波数にごくわずかな確率を必ず散乱させるので、実行中は高波数成分のしきい値を 1e-3 にしています）。
+- **チェック**: `diagnose()` を発射時（厳しい基準）と 60 フレームごとに実行します。実行中の高波数成分は、発射した確率の 1e-4 を超えたときだけ警告します。硬い壁はいつも ~1e-5 の無害な成分を散乱させ、箱が空になるにつれて相対的なしきい値では警告になってしまうためです。箱に残る確率が 1% 未満になると、チェックと ⟨E⟩ の表示を止めます。
 - **V = ⟨E⟩ の線**: 描いた壁が 4⟨E⟩ 未満のとき（障壁やトラップ）だけ表示します。硬い壁の周りでは壁をなぞるだけになるためです。
 - **共有リンク**: 線の点は 0.05 刻みの格子（最も細かい格子より細かい）で保存し、描画中も同じ刻みを使うので、共有した絵はまったく同じように格子に載ります。格子の解像度を変えたときは、補間ではなく線を描き直します。
 - **BEC シーン**: 基底状態は dτ = 0.04 の虚時間発展で準備します（約 330 ステップ、約 2 秒）。dτ = 0.005 の場合との差は ~6 × 10⁻⁵ です。

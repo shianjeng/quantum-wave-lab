@@ -409,7 +409,13 @@
       this.reset();
     }
 
-    reset() { this.times = []; this.fluxes = []; this.transmitted = 0; }
+    reset() {
+      this.lastT = null; this.lastFlux = 0; this.transmitted = 0;       // only the last sample is needed
+      // per column: current density j_x(y) now and its time integral ∫ j_x dt (Σ profile·dy = transmitted)
+      this.current = new Float64Array(this.grid.ny);
+      this.profile = new Float64Array(this.grid.ny);
+      this._prevCurrent = null;
+    }
 
     flux(solver) {
       const { grid, index } = this, ny = grid.ny, nx = grid.nx;
@@ -434,7 +440,9 @@
           }
           dr /= nx; dm /= nx;
         }
-        total += r0 * dm - m0 * dr;            // Im(ψ* ∂ψ)
+        const jx = r0 * dm - m0 * dr;          // Im(ψ* ∂ψ)
+        this.current[j] = jx;
+        total += jx;
       }
       return total * (grid.ndim === 2 ? grid.dy : 1);
     }
@@ -442,11 +450,14 @@
     /** Add a sample at solver.t (trapezoid rule over the samples, as in Python). */
     record(solver) {
       const phi = this.flux(solver);
-      if (this.times.length) {
-        this.transmitted += 0.5 * (phi + this.fluxes[this.fluxes.length - 1]) * (solver.t - this.times[this.times.length - 1]);
+      if (this.lastT !== null) {
+        const dt = solver.t - this.lastT;
+        this.transmitted += 0.5 * (phi + this.lastFlux) * dt;
+        for (const j of this.columns) this.profile[j] += 0.5 * (this.current[j] + this._prevCurrent[j]) * dt;
       }
-      this.times.push(solver.t);
-      this.fluxes.push(phi);
+      this.lastT = solver.t;
+      this.lastFlux = phi;
+      this._prevCurrent = Float64Array.from(this.current);
       return phi;
     }
   }
@@ -533,6 +544,24 @@
     return out;
   }
 
+  /**
+   * Draw one detection position from a detector profile (e.g. FluxDetector.profile): y is chosen with
+   * probability ∝ max(profile, 0) among lo <= y < hi and spread uniformly within its cell. null if empty.
+   */
+  function sampleProfile(profile, ys, random = Math.random, lo = -Infinity, hi = Infinity) {
+    const dy = ys.length > 1 ? ys[1] - ys[0] : 1;
+    let total = 0;
+    for (let j = 0; j < profile.length; j++) if (ys[j] >= lo && ys[j] < hi && profile[j] > 0) total += profile[j];
+    if (!(total > 0)) return null;
+    let u = random() * total;
+    for (let j = 0; j < profile.length; j++) {
+      if (!(ys[j] >= lo && ys[j] < hi && profile[j] > 0)) continue;
+      u -= profile[j];
+      if (u <= 0) return ys[j] + (random() - 0.5) * dy;
+    }
+    return ys[ys.length - 1];
+  }
+
   root.QWave = { FFT, Grid, Solver, FluxDetector, gaussianPacket, absorptionRate, centeredCells, groundStateSteps,
-                 measurePosition, momentumDensity };
+                 measurePosition, momentumDensity, sampleProfile };
 })(globalThis);

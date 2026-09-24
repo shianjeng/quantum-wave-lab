@@ -27,7 +27,7 @@ An interactive simulator for the **time-dependent Schrödinger equation**, solve
 - Live transmission from the probability current (`FluxDetector`), and step callbacks
 - Single-precision mode that emulates the browser port, plus `diagnose()` for too-large Δt, under-resolved grids and misplaced packets
 - 24 checks against analytic results ([validation](docs/validation.md)), and golden files for ports ([porting](docs/porting.md))
-- A browser version ([web/](web/README.md)) that runs the same solver in single precision and passes those golden files: 10 scenes, drawing with undo, a momentum view, measurement, share links and video export
+- A browser version ([web/](web/README.md)) that runs the same solver in single precision and passes those golden files: 10 scenes, a guided tour, interference built up one particle at a time, a 3D view, a momentum view, drawing with undo, share links and video export
 
 ![Gross–Pitaevskii demos](figures/gpe.png)
 
@@ -79,7 +79,7 @@ validate.py   analytic checks · demo_2d.py, demo_gpe.py, make_gif.py: figures
 
 - [x] Python reference implementation and numerical validation
 - [x] Reference data that a port must reproduce (`reference/`)
-- [x] Browser version in plain JS: draw potentials with the mouse, 10 scenes, live transmission, momentum view, measurement, share links; tested against `reference/`
+- [x] Browser version in plain JS: draw potentials with the mouse, 10 scenes, guided tour, one-particle-at-a-time detection, 3D and momentum views, share links; tested against `reference/`
 - [x] Deploy on GitHub Pages
 - [ ] Port to C++17 (FFT: pocketfft / KissFFT) with tests against `reference/`
 - [ ] Compile to WebAssembly with Emscripten, render with WebGL2
@@ -104,7 +104,7 @@ validate.py   analytic checks · demo_2d.py, demo_gpe.py, make_gif.py: figures
 - 確率流によるリアルタイムの透過率計測（`FluxDetector`）とステップごとのコールバック
 - ブラウザ版を再現する単精度モード。大きすぎる Δt、粗すぎる格子、置き方のおかしい波包を見つける `diagnose()`
 - 解析解との 24 項目の比較（[数値検証](docs/validation.md#japanese)）と、移植用のリファレンスデータ（[移植](docs/porting.md#japanese)）
-- 同じソルバを単精度で動かし、そのリファレンスデータに合格するブラウザ版（[web/](web/README.md#japanese)）。10 のシーン、元に戻せる描画、運動量表示、測定、共有リンク、動画の書き出し
+- 同じソルバを単精度で動かし、そのリファレンスデータに合格するブラウザ版（[web/](web/README.md#japanese)）。10 のシーン、ガイドツアー、粒子 1 個ずつで積み上がる干渉縞、3D 表示、運動量表示、元に戻せる描画、共有リンク、動画の書き出し
 
 ### 使い方
 
@@ -133,7 +133,7 @@ cd web && node --test              # ブラウザ版ソルバとリファレン�
 
 - [x] Python リファレンス実装と数値検証
 - [x] 移植版が再現すべきリファレンスデータ（`reference/`）
-- [x] 純粋な JS によるブラウザ版: マウスでポテンシャルを描画、10 のシーン、透過率のリアルタイム計測、運動量表示、測定、共有リンク。`reference/` で検証済み
+- [x] 純粋な JS によるブラウザ版: マウスでポテンシャルを描画、10 のシーン、ガイドツアー、粒子 1 個ずつの検出、3D 表示と運動量表示、共有リンク。`reference/` で検証済み
 - [x] GitHub Pages で公開
 - [ ] C++17 移植（FFT: pocketfft / KissFFT）、`reference/` との照合テスト
 - [ ] Emscripten で WebAssembly 化、WebGL2 で描画

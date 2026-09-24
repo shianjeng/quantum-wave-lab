@@ -4,18 +4,27 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Quantum Wave Lab</title>
-  <meta name="description" content="Draw a potential, launch a quantum wave packet and watch the Schrödinger equation in real time: tunneling, double-slit interference, scattering, Bose–Einstein condensates.">
+  <meta name="description" content="Draw a potential, launch a quantum wave packet and watch the Schrödinger equation in real time: tunneling, double-slit interference one particle at a time, momentum space, a 3D view and Bose–Einstein condensates.">
+  <meta name="theme-color" content="#070a12">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <!-- ?v=N: bump when the files change, so browsers and the Pages CDN do not serve stale copies -->
-  <link rel="stylesheet" href="style.css?v=2">
+  <link rel="stylesheet" href="style.css?v=6">
 </head>
 <body>
   <header class="top">
     <div class="brand">
-      <h1>Quantum Wave Lab</h1>
-      <p class="subtitle" data-i18n="subtitle"></p>
+      <svg class="logo" viewBox="0 0 48 48" aria-hidden="true">
+        <defs><linearGradient id="lg" x1="0" x2="1"><stop offset="0" stop-color="#4dd0e1"/><stop offset=".55" stop-color="#a78bfa"/><stop offset="1" stop-color="#f5b642"/></linearGradient></defs>
+        <path d="M3 30 C9 30 10 12 16 12 S23 36 29 36 36 18 45 18" fill="none" stroke="url(#lg)" stroke-width="3.2" stroke-linecap="round"/>
+        <rect x="30" y="6" width="4" height="36" rx="2" fill="#4dd0e1" opacity=".55"/>
+      </svg>
+      <div>
+        <h1>Quantum Wave Lab</h1>
+        <p class="subtitle" data-i18n="subtitle"></p>
+      </div>
     </div>
     <div class="top-actions">
+      <button type="button" id="tour-btn" class="ghost"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5 9.7 6l4.8.2-3.8 3 1.3 4.6L8 11.1 4 13.8l1.3-4.6-3.8-3L6.3 6z"/></svg><span data-i18n="tour"></span></button>
       <div class="seg" role="group" aria-label="Language">
         <button type="button" data-lang="en" aria-pressed="true">EN</button>
         <button type="button" data-lang="ja" aria-pressed="false">日本語</button>
@@ -28,65 +37,70 @@
 
   <main class="layout">
     <section class="stage">
-      <div class="field-wrap">
+      <div class="field-wrap" id="field-wrap">
         <canvas id="field" width="800" height="800" aria-label="Simulation field"></canvas>
+        <div class="hud hud-tl" aria-live="polite">
+          <div class="chip"><span data-i18n="hud.time"></span><b id="r-time">0.00</b></div>
+          <div class="chip"><span>⟨E⟩</span><b id="r-energy">—</b></div>
+          <div class="chip accent" id="chip-trans"><span data-i18n="hud.transmitted"></span><b id="r-trans">—</b></div>
+          <div class="chip particles" id="chip-particles" hidden><span data-i18n="hud.particles"></span><b id="r-particles">0</b></div>
+        </div>
+        <div class="hud hud-tr"><div class="chip scene" id="scene-chip"></div></div>
+        <div class="hud hud-br">
+          <div class="seg view" role="group" id="view" title="V">
+            <button type="button" data-view="position" aria-pressed="true">2D</button>
+            <button type="button" data-view="surface" aria-pressed="false">3D</button>
+            <button type="button" data-view="momentum" aria-pressed="false">k</button>
+          </div>
+        </div>
         <div id="busy" class="busy" hidden><span class="spinner"></span><span id="busy-text"></span></div>
+        <div id="tour" class="tour" hidden role="dialog" aria-labelledby="tour-title">
+          <button type="button" id="tour-close" class="close" aria-label="Close">×</button>
+          <p class="tour-step" id="tour-step"></p>
+          <h3 id="tour-title"></h3>
+          <p id="tour-text"></p>
+          <div class="tour-nav">
+            <button type="button" id="tour-prev" data-i18n="tour.back"></button>
+            <div class="dots" id="tour-dots"></div>
+            <button type="button" id="tour-next" class="primary" data-i18n="tour.next"></button>
+          </div>
+        </div>
       </div>
-      <div class="toolbar" role="toolbar" aria-label="Actions">
+
+      <div class="dock" role="toolbar" aria-label="Controls">
         <div class="group">
-        <button type="button" id="measure" title="M"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="1.6" class="fill"/></svg><span data-i18n="measure"></span></button>
-        <button type="button" id="undo" title="Ctrl/⌘+Z"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 4 2 7l3 3M2.5 7H10a4 4 0 0 1 0 8H7"/></svg><span data-i18n="undo"></span></button>
-        <button type="button" id="redo" title="Shift+Ctrl/⌘+Z"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m11 4 3 3-3 3M13.5 7H6a4 4 0 0 0 0 8h3"/></svg><span data-i18n="redo"></span></button>
+          <button type="button" id="play" class="play" title="Space"><svg viewBox="0 0 16 16" aria-hidden="true"><path class="i-play" d="M5 3.2v9.6L12.8 8z"/><path class="i-pause" d="M4.5 3h2.4v10H4.5zM9.1 3h2.4v10H9.1z"/></svg></button>
+          <button type="button" id="relaunch" title="R"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5V5h-2.5"/></svg><span data-i18n="relaunch"></span></button>
+          <button type="button" id="measure" title="M"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="1.6" class="fill"/></svg><span data-i18n="measure"></span></button>
+          <button type="button" id="particles" aria-pressed="false" title="P"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="4" cy="4" r="1.2" class="fill"/><circle cx="11" cy="3" r="1.2" class="fill"/><circle cx="7" cy="8" r="1.2" class="fill"/><circle cx="12" cy="11" r="1.2" class="fill"/><circle cx="4" cy="12.5" r="1.2" class="fill"/></svg><span data-i18n="particles"></span></button>
         </div>
         <div class="group">
-        <button type="button" id="save"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="3" width="12" height="10" rx="1.5"/><circle cx="6" cy="7" r="1.3" class="fill"/><path d="m3 12 4-3.5 2.5 2 2-1.5L14 11"/></svg><span data-i18n="saveImage"></span></button>
-        <button type="button" id="record"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="4.5" class="fill rec"/></svg><span data-i18n="record"></span></button>
-        <button type="button" id="share"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 9.5a3 3 0 0 0 4.2 0l2.3-2.3a3 3 0 0 0-4.2-4.2l-.8.8M9.5 6.5a3 3 0 0 0-4.2 0L3 8.8A3 3 0 0 0 7.2 13l.8-.8"/></svg><span data-i18n="share"></span></button>
+          <button type="button" id="undo" class="icon" title="Ctrl/⌘+Z"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 4 2 7l3 3M2.5 7H10a4 4 0 0 1 0 8H7"/></svg><span class="sr" data-i18n="undo"></span></button>
+          <button type="button" id="redo" class="icon" title="Shift+Ctrl/⌘+Z"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m11 4 3 3-3 3M13.5 7H6a4 4 0 0 0 0 8h3"/></svg><span class="sr" data-i18n="redo"></span></button>
+          <button type="button" id="save" class="icon"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="3" width="12" height="10" rx="1.5"/><circle cx="6" cy="7" r="1.3" class="fill"/><path d="m3 12 4-3.5 2.5 2 2-1.5L14 11"/></svg><span class="sr" data-i18n="saveImage"></span></button>
+          <button type="button" id="record" class="icon"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="4.5" class="fill rec"/></svg><span class="sr" data-i18n="record"></span></button>
+          <button type="button" id="share" class="icon"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 9.5a3 3 0 0 0 4.2 0l2.3-2.3a3 3 0 0 0-4.2-4.2l-.8.8M9.5 6.5a3 3 0 0 0-4.2 0L3 8.8A3 3 0 0 0 7.2 13l.8-.8"/></svg><span class="sr" data-i18n="share"></span></button>
+          <button type="button" id="fullscreen" class="icon" title="F"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"/></svg><span class="sr" data-i18n="fullscreen"></span></button>
         </div>
       </div>
       <p id="hint" class="hint"></p>
-      <div class="readouts" aria-live="polite">
-        <div class="readout"><span class="label" data-i18n="time"></span><span id="r-time" class="value">0.00</span></div>
-        <div class="readout"><span class="label" data-i18n="energy"></span><span id="r-energy" class="value">—</span></div>
-        <div class="readout"><span class="label" data-i18n="inBox"></span><span id="r-norm" class="value">100%</span></div>
-        <div class="readout"><span class="label" data-i18n="transmitted"></span><span id="r-trans" class="value accent">—</span></div>
-        <div class="readout"><span class="label" data-i18n="perf"></span><span id="r-perf" class="value">—</span></div>
-      </div>
-      <div class="chart-wrap">
-        <canvas id="chart" aria-hidden="true"></canvas>
-        <div class="legend">
-          <span><i class="sw box"></i><span data-i18n="legend.inBox"></span></span>
-          <span><i class="sw trans"></i><span data-i18n="legend.transmitted"></span></span>
-          <span><i class="sw abs"></i><span data-i18n="legend.absorbed"></span></span>
-        </div>
-      </div>
     </section>
 
     <aside class="panel">
-      <section class="card">
-        <h2 data-i18n="scenes"></h2>
-        <div class="scenes" id="scenes"></div>
-        <p id="scene-info" class="scene-info"></p>
+      <div class="tabs" role="tablist" id="tabs">
+        <button type="button" role="tab" data-tab="scenes" aria-selected="true" data-i18n="tab.scenes"></button>
+        <button type="button" role="tab" data-tab="draw" aria-selected="false" data-i18n="tab.draw"></button>
+        <button type="button" role="tab" data-tab="wave" aria-selected="false" data-i18n="tab.wave"></button>
+        <button type="button" role="tab" data-tab="view" aria-selected="false" data-i18n="tab.view"></button>
+        <button type="button" role="tab" data-tab="data" aria-selected="false" data-i18n="tab.data"></button>
+      </div>
+
+      <section class="tabpanel" role="tabpanel" data-panel="scenes">
+        <div class="gallery" id="scenes"></div>
+        <div class="scene-info-wrap"><h3 id="scene-title"></h3><p id="scene-info" class="scene-info"></p></div>
       </section>
 
-      <section class="card">
-        <h2 data-i18n="simulation"></h2>
-        <div class="row">
-          <button type="button" id="play" class="primary"></button>
-          <button type="button" id="relaunch" data-i18n="relaunch"></button>
-        </div>
-        <label class="slider"><span data-i18n="speed"></span><output id="o-speed"></output>
-          <input type="range" id="speed" min="1" max="20" step="1" value="6"></label>
-        <label class="select"><span data-i18n="resolution"></span>
-          <select id="resolution">
-            <option value="128">128 × 128</option>
-            <option value="256" selected>256 × 256</option>
-            <option value="512">512 × 512</option>
-          </select></label>
-      </section>
-
-      <section class="card">
-        <h2 data-i18n="tools"></h2>
+      <section class="tabpanel" role="tabpanel" data-panel="draw" hidden>
         <div class="seg tools" role="group" id="tools">
           <button type="button" data-tool="wall" aria-pressed="true" data-i18n="tool.wall"></button>
           <button type="button" data-tool="eraser" aria-pressed="false" data-i18n="tool.eraser"></button>
@@ -101,29 +115,33 @@
           <button type="button" id="clear" data-i18n="clearWalls"></button>
           <label class="check"><input type="checkbox" id="detector-on" checked> <span data-i18n="detectorOn"></span></label>
         </div>
+        <p class="note" data-i18n="drawNote"></p>
       </section>
 
-      <section class="card">
-        <h2 data-i18n="packet"></h2>
+      <section class="tabpanel" role="tabpanel" data-panel="wave" hidden>
         <label class="slider"><span data-i18n="momentum"></span><output id="o-k0"></output>
           <input type="range" id="k0" min="0.5" max="8" step="0.1" value="4"></label>
         <label class="slider"><span data-i18n="width"></span><output id="o-sigma"></output>
           <input type="range" id="sigma" min="0.8" max="5" step="0.1" value="2.5"></label>
         <label class="slider"><span data-i18n="nonlinearity"></span><output id="o-g"></output>
           <input type="range" id="g" min="0" max="500" step="10" value="0"></label>
+        <label class="slider"><span data-i18n="speed"></span><output id="o-speed"></output>
+          <input type="range" id="speed" min="1" max="20" step="1" value="6"></label>
+        <label class="select"><span data-i18n="resolution"></span>
+          <select id="resolution">
+            <option value="128">128 × 128</option>
+            <option value="256" selected>256 × 256</option>
+            <option value="512">512 × 512</option>
+          </select></label>
       </section>
 
-      <section class="card">
-        <h2 data-i18n="display"></h2>
-        <div class="seg two" role="group" id="view">
-          <button type="button" data-view="position" aria-pressed="true" data-i18n="view.position"></button>
-          <button type="button" data-view="momentum" aria-pressed="false" data-i18n="view.momentum"></button>
-        </div>
+      <section class="tabpanel" role="tabpanel" data-panel="view" hidden>
         <div class="seg three" role="group" id="display">
           <button type="button" data-display="amplitude" aria-pressed="true" data-i18n="display.amplitude"></button>
           <button type="button" data-display="density" aria-pressed="false" data-i18n="display.density"></button>
           <button type="button" data-display="phase" aria-pressed="false" data-i18n="display.phase"></button>
         </div>
+        <div class="cmaps" role="group" id="cmaps" aria-label="Colour map"></div>
         <label class="slider"><span data-i18n="brightness"></span><output id="o-bright"></output>
           <input type="range" id="bright" min="0.25" max="4" step="0.05" value="1"></label>
         <div class="row">
@@ -132,25 +150,35 @@
         </div>
       </section>
 
-      <section class="card">
-        <h2 data-i18n="checks"></h2>
+      <section class="tabpanel" role="tabpanel" data-panel="data" hidden>
+        <div class="readouts">
+          <div class="readout"><span class="label" data-i18n="inBox"></span><span id="r-norm" class="value">100%</span></div>
+          <div class="readout"><span class="label" data-i18n="perf"></span><span id="r-perf" class="value">—</span></div>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="chart" aria-hidden="true"></canvas>
+          <div class="legend">
+            <span><i class="sw box"></i><span data-i18n="legend.inBox"></span></span>
+            <span><i class="sw trans"></i><span data-i18n="legend.transmitted"></span></span>
+            <span><i class="sw abs"></i><span data-i18n="legend.absorbed"></span></span>
+          </div>
+        </div>
+        <h3 class="sub" data-i18n="checks"></h3>
         <ul id="checks" class="checks"></ul>
-      </section>
-
-      <section class="card about">
-        <h2 data-i18n="aboutTitle"></h2>
-        <p data-i18n="about"></p>
-        <h2 data-i18n="keysTitle"></h2>
-        <p class="muted" data-i18n="keys"></p>
-        <p><a href="https://github.com/shianjeng/quantum-wave-lab" target="_blank" rel="noopener" data-i18n="source"></a></p>
+        <h3 class="sub" data-i18n="aboutTitle"></h3>
+        <p class="about" data-i18n="about"></p>
+        <h3 class="sub" data-i18n="keysTitle"></h3>
+        <p class="about muted" data-i18n="keys"></p>
+        <p class="about"><a href="https://github.com/shianjeng/quantum-wave-lab" target="_blank" rel="noopener" data-i18n="source"></a></p>
       </section>
     </aside>
   </main>
 
-  <script src="js/i18n.js?v=2"></script>
-  <script src="js/qwave.js?v=2"></script>
-  <script src="js/scenes.js?v=2"></script>
-  <script src="js/share.js?v=2"></script>
-  <script src="js/app.js?v=2"></script>
+  <script src="js/i18n.js?v=6"></script>
+  <script src="js/qwave.js?v=6"></script>
+  <script src="js/scenes.js?v=6"></script>
+  <script src="js/share.js?v=6"></script>
+  <script src="js/surface3d.js?v=6"></script>
+  <script src="js/app.js?v=6"></script>
 </body>
 </html>

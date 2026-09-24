@@ -21,6 +21,15 @@ version they were exported with; a port should name the version it is tested aga
   - Measurement: an energy readout, a position measurement with wave-function collapse, and a chart with a legend that also shows the absorbed part.
   - Drawing and sharing: undo/redo and straight walls; share links carrying the scene, parameters and drawings; PNG and video export.
   - Cache-busting version parameters on the scripts.
+- Redesign and new features of the page:
+  - Layout: the field with a HUD, a dock, tabs, a gallery of real simulation thumbnails, and a new look.
+  - Guided tour (7 steps).
+  - "One particle at a time": detections drawn from the time-integrated flux on a screen build up
+    the interference fringes. New `FluxDetector.profile` and `sampleProfile`, both tested.
+  - 3D view (WebGL2), colour maps (Inferno / Viridis / Ice), fullscreen.
+  - Checks judge high-k content in absolute terms while running; ⟨E⟩ and the checks pause when the box is
+    almost empty (they would only judge numerical dust).
+  - `FluxDetector` keeps only its last sample (the full history grew without bound in the page).
 
 ## 0.3.0 — 2026-09-24
 

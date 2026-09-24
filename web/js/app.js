@@ -1,11 +1,11 @@
 /*
  * Quantum Wave Lab: browser app. Physics in js/qwave.js (QWave), scenes in js/scenes.js, share links in
- * js/share.js, strings in js/i18n.js. The field shows the central 40 × 40 of a 51.2 × 51.2 periodic box;
- * the rim outside the view is the absorbing layer, so packets start clear of it (docs/porting.md).
+ * js/share.js, the 3D view in js/surface3d.js, strings in js/i18n.js. The field shows the central 40 × 40
+ * of a 51.2 × 51.2 periodic box; the rim outside the view is the absorbing layer (docs/porting.md).
  */
 (function () {
   "use strict";
-  const { Grid, Solver, FluxDetector, gaussianPacket, groundStateSteps, measurePosition, momentumDensity } = QWave;
+  const { Grid, Solver, FluxDetector, gaussianPacket, groundStateSteps, measurePosition, momentumDensity, sampleProfile } = QWave;
   const { SCENES, ORDER, becTrap, coverage } = QWaveScenes;
   const Share = QWaveShare;
 
@@ -16,23 +16,16 @@
   const SIGMA_M = 0.8;                                         // resolution of the position measurement
   const K_VIEW = 12;                                           // momentum view: |k_x|, |k_y| ≤ 12 (or k_max)
   const ISO_LEVELS = [1, 2, 4, 8, 16, 32, 64];                 // contour lines of the smooth background V
-  const INFERNO = hexToBytes(
-    "00000401000501010601010802010a02020c02020e03021004031204031405041706041907051b08051d09061f0a0722" +
-    "0b07240c08260d08290e092b10092d110a30120a32140b34150b37160b39180c3c190c3e1b0c411c0c431e0c451f0c48" +
-    "210c4a230c4c240c4f260c51280b53290b552b0b572d0b592f0a5b310a5c320a5e340a5f3609613809623909633b0964" +
-    "3d09653e0966400a67420a68440a68450a69470b6a490b6a4a0c6b4c0c6b4d0d6c4f0d6c510e6c520e6d540f6d550f6d" +
-    "57106e59106e5a116e5c126e5d126e5f136e61136e62146e64156e65156e67166e69166e6a176e6c186e6d186e6f196e" +
-    "71196e721a6e741a6e751b6e771c6d781c6d7a1d6d7c1d6d7d1e6d7f1e6c801f6c82206c84206b85216b87216b88226a" +
-    "8a226a8c23698d23698f24699025689225689326679526679727669827669a28659b29649d29649f2a63a02a63a22b62" +
-    "a32c61a52c60a62d60a82e5fa92e5eab2f5ead305dae305cb0315bb1325ab3325ab43359b63458b73557b93556ba3655" +
-    "bc3754bd3853bf3952c03a51c13a50c33b4fc43c4ec63d4dc73e4cc83f4bca404acb4149cc4248ce4347cf4446d04545" +
-    "d24644d34743d44842d54a41d74b3fd84c3ed94d3dda4e3cdb503bdd513ade5238df5337e05536e15635e25734e35933" +
-    "e45a31e55c30e65d2fe75e2ee8602de9612bea632aeb6429eb6628ec6726ed6925ee6a24ef6c23ef6e21f06f20f1711f" +
-    "f1731df2741cf3761bf37819f47918f57b17f57d15f67e14f68013f78212f78410f8850ff8870ef8890cf98b0bf98c0a" +
-    "f98e09fa9008fa9207fa9407fb9606fb9706fb9906fb9b06fb9d07fc9f07fca108fca309fca50afca60cfca80dfcaa0f" +
-    "fcac11fcae12fcb014fcb216fcb418fbb61afbb81dfbba1ffbbc21fbbe23fac026fac228fac42afac62df9c72ff9c932" +
-    "f9cb35f8cd37f8cf3af7d13df7d340f6d543f6d746f5d949f5db4cf4dd4ff4df53f4e156f3e35af3e55df2e661f2e865" +
-    "f2ea69f1ec6df1ed71f1ef75f1f179f2f27df2f482f3f586f3f68af4f88ef5f992f6fa96f8fb9af9fc9dfafda1fcffa4");
+  const SCREEN = { x: 15, x0: 15.3, x1: 19.7, bins: 100, maxDots: 6000 };   // particle detection screen
+  const VIEWS = ["position", "surface", "momentum"];
+  const COLORMAPS = {
+    inferno: hexToBytes("00000401000501010601010802010a02020c02020e03021004031204031405041706041907051b08051d09061f0a07220b07240c08260d08290e092b10092d110a30120a32140b34150b37160b39180c3c190c3e1b0c411c0c431e0c451f0c48210c4a230c4c240c4f260c51280b53290b552b0b572d0b592f0a5b310a5c320a5e340a5f3609613809623909633b09643d09653e0966400a67420a68440a68450a69470b6a490b6a4a0c6b4c0c6b4d0d6c4f0d6c510e6c520e6d540f6d550f6d57106e59106e5a116e5c126e5d126e5f136e61136e62146e64156e65156e67166e69166e6a176e6c186e6d186e6f196e71196e721a6e741a6e751b6e771c6d781c6d7a1d6d7c1d6d7d1e6d7f1e6c801f6c82206c84206b85216b87216b88226a8a226a8c23698d23698f24699025689225689326679526679727669827669a28659b29649d29649f2a63a02a63a22b62a32c61a52c60a62d60a82e5fa92e5eab2f5ead305dae305cb0315bb1325ab3325ab43359b63458b73557b93556ba3655bc3754bd3853bf3952c03a51c13a50c33b4fc43c4ec63d4dc73e4cc83f4bca404acb4149cc4248ce4347cf4446d04545d24644d34743d44842d54a41d74b3fd84c3ed94d3dda4e3cdb503bdd513ade5238df5337e05536e15635e25734e35933e45a31e55c30e65d2fe75e2ee8602de9612bea632aeb6429eb6628ec6726ed6925ee6a24ef6c23ef6e21f06f20f1711ff1731df2741cf3761bf37819f47918f57b17f57d15f67e14f68013f78212f78410f8850ff8870ef8890cf98b0bf98c0af98e09fa9008fa9207fa9407fb9606fb9706fb9906fb9b06fb9d07fc9f07fca108fca309fca50afca60cfca80dfcaa0ffcac11fcae12fcb014fcb216fcb418fbb61afbb81dfbba1ffbbc21fbbe23fac026fac228fac42afac62df9c72ff9c932f9cb35f8cd37f8cf3af7d13df7d340f6d543f6d746f5d949f5db4cf4dd4ff4df53f4e156f3e35af3e55df2e661f2e865f2ea69f1ec6df1ed71f1ef75f1f179f2f27df2f482f3f586f3f68af4f88ef5f992f6fa96f8fb9af9fc9dfafda1fcffa4"),
+    viridis: hexToBytes("44015444025645045745055946075a46085c460a5d460b5e470d60470e6147106347116447136548146748166848176948186a481a6c481b6d481c6e481d6f481f70482071482173482374482475482576482677482878482979472a7a472c7a472d7b472e7c472f7d46307e46327e46337f463480453581453781453882443983443a83443b84433d84433e85423f854240864241864142874144874045884046883f47883f48893e49893e4a893e4c8a3d4d8a3d4e8a3c4f8a3c508b3b518b3b528b3a538b3a548c39558c39568c38588c38598c375a8c375b8d365c8d365d8d355e8d355f8d34608d34618d33628d33638d32648e32658e31668e31678e31688e30698e306a8e2f6b8e2f6c8e2e6d8e2e6e8e2e6f8e2d708e2d718e2c718e2c728e2c738e2b748e2b758e2a768e2a778e2a788e29798e297a8e297b8e287c8e287d8e277e8e277f8e27808e26818e26828e26828e25838e25848e25858e24868e24878e23888e23898e238a8d228b8d228c8d228d8d218e8d218f8d21908d21918c20928c20928c20938c1f948c1f958b1f968b1f978b1f988b1f998a1f9a8a1e9b8a1e9c891e9d891f9e891f9f881fa0881fa1881fa1871fa28720a38620a48621a58521a68522a78522a88423a98324aa8325ab8225ac8226ad8127ad8128ae8029af7f2ab07f2cb17e2db27d2eb37c2fb47c31b57b32b67a34b67935b77937b87838b9773aba763bbb753dbc743fbc7340bd7242be7144bf7046c06f48c16e4ac16d4cc26c4ec36b50c46a52c56954c56856c66758c7655ac8645cc8635ec96260ca6063cb5f65cb5e67cc5c69cd5b6ccd5a6ece5870cf5773d05675d05477d1537ad1517cd2507fd34e81d34d84d44b86d54989d5488bd6468ed64590d74393d74195d84098d83e9bd93c9dd93ba0da39a2da37a5db36a8db34aadc32addc30b0dd2fb2dd2db5de2bb8de29bade28bddf26c0df25c2df23c5e021c8e020cae11fcde11dd0e11cd2e21bd5e21ad8e219dae319dde318dfe318e2e418e5e419e7e419eae51aece51befe51cf1e51df4e61ef6e620f8e621fbe723fde725"),
+    ice: hexToBytes("00000000000100010200010300020500020600030701030801030901040a01040b01050d01050e01060f010610010611010712010713010814010816020917020918020919020a1a020a1b020b1c020b1e020c1f020c20020d21020d22020d23030e24030e26030f27030f2803102903102a03102b03112c03112d03122f03123003133103133204133304143404143504153704153804163904163a04173c04183d04193f051a41051b42051c44051d46051e47051f4905204b06214c06224e06235006245106255306265506275606285807295a072a5b072b5d072c5f072d60072e62072f6408316508326708336908346a08356c08366e08376f093871093973093a74093b76093c78093d79093e7b093f7d0a407e0a41800a42820a43830a44850a45870a46880b478a0b488c0b498d0b4a8f0b4c900c4d920c4f930d51950d53960d54970e56990e589a0f5a9c0f5b9d0f5d9e105fa01060a11062a21164a41166a51267a71269a8126ba9136dab136eac1470ae1472af1473b01575b21577b31679b5167ab6167cb7177eb9177fba1881bc1883bd1885be1986c01988c11a8ac31a8cc41a8dc51b8fc71b91c81b92c91c94cb1c96cc1d98ce1d99cf1d9bd01e9dd21e9fd31fa0d51fa2d621a3d723a5d726a6d828a7d82aa8d92caada2eabda31acdb33addb35afdc37b0dd39b1dd3cb3de3eb4df40b5df42b6e044b8e047b9e149bae24bbbe24dbde34fbee352bfe454c1e556c2e558c3e65ac4e65cc6e75fc7e861c8e863cae965cbe967ccea6acdeb6ccfeb6ed0ec70d1ec72d2ed75d4ee77d5ee79d6ef7bd8f07dd9f080daf182dbf184ddf286def388dff38be0f48de2f48fe3f591e4f593e4f596e5f698e5f69ae6f69ce6f69ee7f6a1e7f7a3e8f7a5e8f7a7e9f7a9eaf7aceaf8aeebf8b0ebf8b2ecf8b4ecf8b7edf9b9edf9bbeef9bdeff9bfeff9c2f0fac4f0fac6f1fac8f1facaf2faccf2facff3fbd1f3fbd3f4fbd5f5fbd7f5fbdaf6fcdcf6fcdef7fce0f7fce2f8fce5f8fde7f9fde9fafdebfafdedfbfdf0fbfef2fcfef4fcfef6fdfef8fdfefbfefffdfeffffffff"),
+  };
+  const THUMB_TIME = { tunneling: 4.5, resonant: 5.5, singleSlit: 5.5, doubleSlit: 6, grating: 6, scattering: 4.5,
+                       harmonic: 2.2, corral: 9, bec: 4, free: 1.5 };
+  const THUMB_KEY = "qwl-thumbs-v3";
   const WALL_RGB = [77, 208, 225], DETECTOR_RGB = "245, 182, 66";
 
   function hexToBytes(hex) {
@@ -40,6 +33,10 @@
     for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.substr(2 * i, 2), 16);
     return out;
   }
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* private mode or full */ } },
+  };
 
   // ---------------------------------------------------------------- state
   const $ = (id) => document.getElementById(id);
@@ -47,6 +44,7 @@
   const chart = $("chart"), cctx = chart.getContext("2d");
   const state = {
     lang: pickLanguage(), N: 256, scene: "doubleSlit", tool: "wall", view: "position", display: "amplitude",
+    cmap: COLORMAPS[store.get("qwl-cmap")] ? store.get("qwl-cmap") : "inferno",
     auto: false, contours: true, running: true, speed: 6, bright: 1, brush: 1, height: 100,
     k0: 4, sigma: 2.5, g: 0, detectorOn: true, detectorX: 0, packet: null, customPacket: false,
     grid: null, solver: null, sceneWalls: null, baseV: null, wallV: null, vDirty: false, detector: null,
@@ -54,10 +52,12 @@
     scale: 1, energy: null, samples: [], frame: 0, msPerStep: null, fps: null, lastFrame: null,
     drag: null, hover: null, issues: [], becCache: {}, becPsi: null, busy: false,
     measurement: null, contours_: null, recorder: null, kIndex: null, hintTimer: null,
+    particles: null, surface: null, lastOrbit: 0, tour: null, tab: "scenes",
   };
 
   function pickLanguage() {
-    try { const s = localStorage.getItem("qwl-lang"); if (s === "en" || s === "ja") return s; } catch (e) { /* no storage */ }
+    const s = store.get("qwl-lang");
+    if (s === "en" || s === "ja") return s;
     return (navigator.language || "").startsWith("ja") ? "ja" : "en";
   }
   function t(key, vars = {}) {
@@ -160,7 +160,9 @@
     state.detectorOn = opts.detectorOn ?? (sc.detector !== null && sc.detector !== undefined);
     state.detectorX = opts.detectorX ?? sc.detector ?? 0;
     $("detector-on").checked = state.detectorOn;
-    document.querySelectorAll("#scenes button").forEach((b) => b.classList.toggle("active", b.dataset.scene === name));
+    state.particles = null;
+    updateParticlesButton();
+    document.querySelectorAll("#scenes .scene-card").forEach((b) => b.classList.toggle("active", b.dataset.scene === name));
     updateSceneInfo();
     if (sc.bec) { prepareBec(); return; }
     state.customPacket = Boolean(opts.packet);
@@ -177,6 +179,8 @@
     const facts = SCENES[state.scene].facts ?? {};
     const vars = Object.fromEntries(Object.entries(facts).map(([k, v]) => [k, percent(v)]));
     $("scene-info").textContent = t(`info.${state.scene}`, vars);
+    $("scene-title").textContent = t(`scene.${state.scene}`);
+    $("scene-chip").textContent = t(`scene.${state.scene}`);
   }
 
   function relaunch() {
@@ -197,6 +201,7 @@
     state.energy = s.energy();
     state.contours_ = null;
     resetDetector();
+    if (state.particles) resetParticles();
     state.samples = [];
     runChecks();
     render();
@@ -211,6 +216,46 @@
   function resetDetector() {
     state.detector = state.detectorOn ? new FluxDetector(state.grid, state.detectorX, { method: "spectral" }) : null;
     if (state.detector) state.detector.record(state.solver);
+    $("chip-trans").hidden = !state.detector;
+  }
+
+  // ---------------------------------------------------------------- one particle at a time
+  function setParticles(on) {
+    if (on) { state.particles = {}; relaunch(); }      // a fresh run, so the screen starts empty
+    else state.particles = null;
+    updateParticlesButton();
+    $("hint").textContent = defaultHint();
+  }
+
+  function resetParticles() {
+    const scr = new FluxDetector(state.grid, SCREEN.x, { method: "spectral" });
+    scr.record(state.solver);
+    state.particles = { screen: scr, dots: [], counts: new Uint32Array(SCREEN.bins), emitting: 0 };
+  }
+
+  function updateParticlesButton() {
+    const on = Boolean(state.particles);
+    $("particles").setAttribute("aria-pressed", String(on));
+    $("chip-particles").hidden = !on;
+  }
+
+  /** After each frame: detections drawn from the flux that has reached the screen so far (its time integral). */
+  function emitParticles() {
+    const P = state.particles;
+    if (!P || !P.screen) return;
+    P.screen.record(state.solver);
+    const g = state.grid;
+    let arrived = 0;
+    for (let j = 0; j < g.ny; j++) if (Math.abs(g.ys[j]) < VIEW / 2 && P.screen.profile[j] > 0) arrived += P.screen.profile[j] * g.dy;
+    if (arrived < 0.01 || P.dots.length >= SCREEN.maxDots) return;
+    P.emitting++;
+    const n = Math.min(40, 1 + Math.floor(P.emitting / 12), SCREEN.maxDots - P.dots.length);   // a slow start, then faster
+    for (let k = 0; k < n; k++) {
+      const y = sampleProfile(P.screen.profile, g.ys, Math.random, -VIEW / 2, VIEW / 2);
+      if (y === null) break;
+      P.dots.push([SCREEN.x0 + Math.random() * (SCREEN.x1 - SCREEN.x0), y]);
+      P.counts[Math.min(SCREEN.bins - 1, Math.max(0, Math.floor(((y + VIEW / 2) / VIEW) * SCREEN.bins)))]++;
+    }
   }
 
   // ---------------------------------------------------------------- Bose–Einstein condensate scene
@@ -265,15 +310,17 @@
     render();
   }
 
-  // ---------------------------------------------------------------- pointer tools
+  // ---------------------------------------------------------------- pointer: tools in 2D, orbit in 3D
   function toPhys(ev) {
     const r = field.getBoundingClientRect();
     return [-VIEW / 2 + ((ev.clientX - r.left) / r.width) * VIEW, VIEW / 2 - ((ev.clientY - r.top) / r.height) * VIEW];
   }
 
   field.addEventListener("pointerdown", (ev) => {
-    if (state.busy || state.view !== "position") return;
+    if (state.busy) return;
     field.setPointerCapture(ev.pointerId);
+    if (state.view === "surface") { state.drag = { kind: "orbit", x: ev.clientX, y: ev.clientY }; state.lastOrbit = performance.now(); return; }
+    if (state.view !== "position") return;
     const p = toPhys(ev);
     const erase = state.tool === "eraser" || ev.button === 2;
     if (state.tool === "wall" || state.tool === "eraser" || ev.button === 2) {
@@ -288,9 +335,14 @@
     else if (state.tool === "detector") { state.detectorX = p[0]; state.detectorOn = true; $("detector-on").checked = true; resetDetector(); }
   });
   field.addEventListener("pointermove", (ev) => {
+    const d = state.drag;
+    if (d && d.kind === "orbit") {
+      state.surface.orbit(ev.clientX - d.x, ev.clientY - d.y);
+      d.x = ev.clientX; d.y = ev.clientY; state.lastOrbit = performance.now();
+      return;
+    }
     const p = toPhys(ev);
     state.hover = p;
-    const d = state.drag;
     if (!d) return;
     if (d.kind === "paint") {
       const st = state.stroke, last = st.pts[st.pts.length - 1];
@@ -322,15 +374,22 @@
   field.addEventListener("pointercancel", () => { if (state.stroke) { state.stroke = null; rebuildWalls(); } state.drag = null; });
   field.addEventListener("pointerleave", () => { state.hover = null; });
   field.addEventListener("contextmenu", (ev) => ev.preventDefault());
+  field.addEventListener("wheel", (ev) => {
+    if (state.view !== "surface") return;
+    ev.preventDefault();
+    state.surface.zoom(Math.exp(ev.deltaY * 0.001));
+    state.lastOrbit = performance.now();
+  }, { passive: false });
 
   // ---------------------------------------------------------------- rendering
-  let img = null, off = null, offCtx = null;
+  let img = null, off = null, offCtx = null, heights = null;
 
   function ensureBuffer(n) {
     if (!off || off.width !== n) {
       off = document.createElement("canvas"); off.width = off.height = n;
       offCtx = off.getContext("2d");
       img = offCtx.createImageData(n, n);
+      heights = new Uint8Array(n * n);
     }
   }
 
@@ -338,17 +397,20 @@
     if (!state.solver) return;
     if (state.solver.shifted) state.solver.norm();                    // undo a pending half-step
     const S = field.width;
-    if (state.view === "momentum") renderMomentum(S); else renderPosition(S);
+    if (state.view === "momentum") renderMomentum(S);
+    else if (state.view === "surface") renderSurface(S);
+    else renderPosition(S);
   }
 
-  function colour(v, a2, re, im, mode, inv, inv2) {
+  function colour(a2, re, im, mode, inv, inv2) {
     if (mode === "phase") return hsv(Math.atan2(im, re), Math.min(1, Math.sqrt(a2) * inv));
     const x = mode === "density" ? a2 * inv2 : Math.sqrt(a2) * inv;
-    const k = 3 * Math.min(255, Math.max(0, (x * 255) | 0));
-    return [INFERNO[k], INFERNO[k + 1], INFERNO[k + 2]];
+    const lut = COLORMAPS[state.cmap], k = 3 * Math.min(255, Math.max(0, (x * 255) | 0));
+    return [lut[k], lut[k + 1], lut[k + 2]];
   }
 
-  function renderPosition(S) {
+  /** The view as pixels (walls tinted) and, for the 3D view, heights (row 0 = bottom). */
+  function paintView() {
     const s = state.solver, g = state.grid, n = viewCells(), o = viewOffset(), ny = g.ny;
     ensureBuffer(n);
     const re = s.re, im = s.im, W = state.wallV, data = img.data;
@@ -360,22 +422,37 @@
         const idx = (o + c) * ny + iy, p = 4 * (r * n + c);
         const a2 = re[idx] * re[idx] + im[idx] * im[idx];
         if (a2 > amax) amax = a2;
-        let [R, G, B] = colour(0, a2, re[idx], im[idx], mode, inv, inv2);
+        let [R, G, B] = colour(a2, re[idx], im[idx], mode, inv, inv2);
         const w = W[idx];
+        let h = Math.min(255, (mode === "density" ? a2 * inv2 : Math.sqrt(a2) * inv) * 255);
         if (w > 0.5) {                                                   // wall tint, as in the README GIF
           const f = 0.35 + 0.35 * Math.min(w / 100, 1);
           R = R * (1 - f) + WALL_RGB[0] * f; G = G * (1 - f) + WALL_RGB[1] * f; B = B * (1 - f) + WALL_RGB[2] * f;
+          h = Math.max(h, 45 * Math.min(w / 50, 1));                       // walls as low ridges in 3D
         }
         data[p] = R; data[p + 1] = G; data[p + 2] = B; data[p + 3] = 255;
+        heights[(n - 1 - r) * n + c] = h;
       }
     }
     if (state.auto) state.scale = 0.8 * state.scale + 0.2 * (Math.sqrt(amax) || state.scale);
+    return n;
+  }
+
+  function renderPosition(S) {
+    paintView();
     offCtx.putImageData(img, 0, 0);
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
     ctx.drawImage(off, 0, 0, S, S);
     if (state.contours) drawContours(S);
+    drawParticleScreen(S);
     drawPositionOverlay(S);
+  }
+
+  function renderSurface(S) {
+    const n = paintView();
+    if (performance.now() - state.lastOrbit > 2500) state.surface.camera.yaw += 0.0025;   // slow turn when idle
+    ctx.drawImage(state.surface.draw(n, heights, img.data), 0, 0, S, S);
   }
 
   function renderMomentum(S) {
@@ -389,7 +466,7 @@
       const j = idx[m - 1 - r];
       for (let c = 0; c < m; c++) {
         const a2 = phi2[idx[c] * ny + j], p = 4 * (r * m + c);
-        const [R, G, B] = colour(0, a2, 0, 0, mode, inv, inv2);
+        const [R, G, B] = colour(a2, 0, 0, mode, inv, inv2);
         data[p] = R; data[p + 1] = G; data[p + 2] = B; data[p + 3] = 255;
       }
     }
@@ -457,6 +534,34 @@
   }
 
   // ---------------------------------------------------------------- overlays
+  function drawParticleScreen(S) {
+    const P = state.particles;
+    if (!P || !P.screen) return;
+    const x0 = toPx(SCREEN.x0, S), x1 = toPx(SCREEN.x1, S), w = x1 - x0;
+    ctx.save();
+    ctx.fillStyle = "rgba(4, 6, 12, 0.82)";
+    ctx.fillRect(x0, 0, w, S);
+    ctx.strokeStyle = "rgba(255,255,255,0.35)"; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(toPx(SCREEN.x, S), 0); ctx.lineTo(toPx(SCREEN.x, S), S); ctx.stroke();
+    // the dots: each one detection; fainter the more there are, so dense bands stay readable
+    const n = P.dots.length;
+    ctx.fillStyle = `rgba(255, 244, 214, ${Math.min(0.9, 0.3 + 400 / (n + 1))})`;
+    for (const [x, y] of P.dots) ctx.fillRect(toPx(x, S) - 1, toPy(y, S) - 1, 2, 2);
+    // on top: the histogram (3-bin running mean), the pattern the detections converge to
+    if (n > 50) {
+      const c = P.counts, B = SCREEN.bins, sm = new Float64Array(B);
+      for (let b = 0; b < B; b++) sm[b] = (c[Math.max(0, b - 1)] + c[b] + c[Math.min(B - 1, b + 1)]) / 3;
+      const maxC = Math.max(...sm), bh = S / B;
+      ctx.beginPath();
+      ctx.moveTo(x0, S);
+      for (let b = 0; b < B; b++) ctx.lineTo(x0 + (w * 0.92 * sm[b]) / maxC, S - (b + 0.5) * bh);
+      ctx.lineTo(x0, 0);
+      ctx.fillStyle = `rgba(${DETECTOR_RGB}, 0.18)`; ctx.fill();
+      ctx.strokeStyle = `rgba(${DETECTOR_RGB}, 0.95)`; ctx.lineWidth = 2; ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   function drawPositionOverlay(S) {
     if (state.detector) {
       const x = toPx(state.detector.position, S);
@@ -545,12 +650,13 @@
 
   function drawChart() {
     const dpr = window.devicePixelRatio || 1, W = Math.round(chart.clientWidth * dpr), H = Math.round(chart.clientHeight * dpr);
+    if (!W || !H) return;                                             // Data tab not visible
     if (chart.width !== W || chart.height !== H) { chart.width = W; chart.height = H; }
     cctx.clearRect(0, 0, W, H);
     const padL = 38 * dpr, padR = 8 * dpr, padT = 6 * dpr, padB = 16 * dpr;
     const smp = state.samples, tmax = smp.length ? Math.max(smp[smp.length - 1].t, 1) : 1;
     const X = (tt) => padL + ((W - padL - padR) * tt) / tmax, Y = (v) => H - padB - (H - padT - padB) * Math.min(Math.max(v, 0), 1);
-    cctx.font = `${11 * dpr}px system-ui, sans-serif`; cctx.fillStyle = "#8b949e"; cctx.strokeStyle = "#30363d"; cctx.lineWidth = dpr;
+    cctx.font = `${11 * dpr}px system-ui, sans-serif`; cctx.fillStyle = "#8d98ab"; cctx.strokeStyle = "rgba(255,255,255,0.1)"; cctx.lineWidth = dpr;
     for (const v of [0, 0.5, 1]) {
       cctx.beginPath(); cctx.moveTo(padL, Y(v)); cctx.lineTo(W - padR, Y(v)); cctx.stroke();
       cctx.fillText(`${v * 100}%`, 4 * dpr, Y(v) + 4 * dpr);
@@ -567,13 +673,129 @@
     if (state.detector) line((q) => q.trans, `rgb(${DETECTOR_RGB})`);
   }
 
+  // ---------------------------------------------------------------- scene gallery thumbnails
+  /** Small real simulations (128², in idle time) for the gallery cards; cached in localStorage. */
+  function buildGallery() {
+    const box = $("scenes");
+    for (const name of ORDER) {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "scene-card"; b.dataset.scene = name;
+      const cv = document.createElement("canvas"); cv.width = cv.height = 100;
+      const label = document.createElement("span"); label.dataset.i18n = `scene.${name}`;
+      b.append(cv, label);
+      b.addEventListener("click", () => loadScene(name));
+      box.appendChild(b);
+    }
+    let cache = {};
+    try { cache = JSON.parse(store.get(THUMB_KEY) || "{}"); } catch (e) { cache = {}; }
+    const todo = ORDER.filter((name) => {
+      if (!cache[name]) return true;
+      const im = new Image();
+      im.onload = () => box.querySelector(`[data-scene=${name}] canvas`).getContext("2d").drawImage(im, 0, 0);
+      im.src = cache[name];
+      return false;
+    });
+    const next = () => {
+      const name = todo.shift();
+      if (!name) return;
+      const job = thumbnailJob(name), cv = box.querySelector(`[data-scene=${name}] canvas`);
+      const slice = () => {
+        const t0 = performance.now();
+        let r;
+        do r = job.next(); while (!r.done && performance.now() - t0 < 8);
+        if (!r.done) { setTimeout(slice, 16); return; }
+        cv.getContext("2d").putImageData(r.value, 0, 0);
+        cache[name] = cv.toDataURL("image/png");
+        store.set(THUMB_KEY, JSON.stringify(cache));
+        setTimeout(next, 30);
+      };
+      setTimeout(slice, 0);
+    };
+    setTimeout(next, 600);                             // let the main simulation start first
+  }
+
+  function* thumbnailJob(name) {
+    const sc = SCENES[name], g = new Grid([128, 128], [L, L]);
+    const W = sc.walls ? sc.walls(g) : new Float64Array(g.size);
+    const B = sc.base ? g.fill(sc.base) : new Float64Array(g.size);
+    let s;
+    if (sc.bec) {
+      let last = null;
+      for (const r of groundStateSteps(g, g.fill(becTrap), { dtau: 0.04, nonlinearity: 300, tol: 1e-6, chunk: 10 })) { last = r; yield; }
+      s = new Solver(g, W, dtFor(g, 300), { absorber: ABSORBER, nonlinearity: 300 });
+      s.setPsi(last.re, last.im);
+    } else {
+      s = new Solver(g, W.map((w, i) => w + B[i]), DT, { absorber: ABSORBER });
+      const p = sc.packet, n = Math.hypot(...p.dir);
+      s.setPsi(...gaussianPacket(g, p.center, [p.sigma, p.sigma * (p.aspect ?? 1)], [(p.k0 * p.dir[0]) / n, (p.k0 * p.dir[1]) / n], Float32Array));
+    }
+    while (s.t < THUMB_TIME[name] - 1e-9) { s.step(2); yield; }
+    s.norm();
+    const n = 100, o = 14, out = new ImageData(n, n), lut = COLORMAPS.inferno;
+    let amax = 0;
+    for (let i = 0; i < s.re.length; i++) amax = Math.max(amax, Math.hypot(s.re[i], s.im[i]));
+    for (let r = 0; r < n; r++) {
+      for (let c = 0; c < n; c++) {
+        const idx = (o + c) * g.ny + (o + n - 1 - r), p = 4 * (r * n + c);
+        const k = 3 * Math.min(255, ((Math.hypot(s.re[idx], s.im[idx]) / amax) * 1.15 * 255) | 0);
+        let R = lut[k], G = lut[k + 1], Bl = lut[k + 2];
+        if (W[idx] > 0.5) { R = R * 0.35 + WALL_RGB[0] * 0.65; G = G * 0.35 + WALL_RGB[1] * 0.65; Bl = Bl * 0.35 + WALL_RGB[2] * 0.65; }
+        out.data[p] = R; out.data[p + 1] = G; out.data[p + 2] = Bl; out.data[p + 3] = 255;
+      }
+    }
+    return out;
+  }
+
+  // ---------------------------------------------------------------- guided tour
+  const TOUR = [
+    { scene: "free", view: "position" },
+    { scene: "tunneling", view: "position" },
+    { scene: "doubleSlit", view: "position" },
+    { scene: "doubleSlit", view: "position", particles: true },
+    { view: "momentum" },
+    { scene: "scattering", view: "surface" },
+    { scene: "free", view: "position", tab: "draw", tool: "wall" },
+  ];
+
+  function startTour() { showTourStep(0); }
+  function endTour() {
+    state.tour = null;
+    $("tour").hidden = true;
+    store.set("qwl-tour", "done");
+  }
+  function showTourStep(i) {
+    state.tour = i;
+    const st = TOUR[i];
+    if (st.scene) loadScene(st.scene);
+    if (st.view) setView(st.view);
+    if (st.particles) setParticles(true);
+    if (st.tab) selectTab(st.tab);
+    if (st.tool) document.querySelector(`[data-tool=${st.tool}]`).click();
+    if (!state.running) setRunning(true);
+    renderTour();
+  }
+  function renderTour() {
+    const i = state.tour;
+    if (i === null) return;
+    $("tour").hidden = false;
+    $("tour-step").textContent = t("tour.step", { n: i + 1, m: TOUR.length });
+    $("tour-title").textContent = t(`tour.${i + 1}.title`);
+    $("tour-text").textContent = t(`tour.${i + 1}.text`);
+    $("tour-prev").disabled = i === 0;
+    $("tour-next").textContent = i === TOUR.length - 1 ? t("tour.done") : t("tour.next");
+    $("tour-dots").innerHTML = TOUR.map((_, k) => `<i class="${k === i ? "on" : ""}"></i>`).join("");
+  }
+
   // ---------------------------------------------------------------- readouts, checks, hints
   function updateReadouts() {
     const s = state.solver;
     $("r-time").textContent = s.t.toFixed(2);
-    $("r-energy").textContent = state.energy === null ? "—" : state.energy.toFixed(2);
-    $("r-norm").textContent = `${(100 * s.norm()).toFixed(1)}%`;
+    const norm = s.norm();
+    // ⟨E⟩ is per particle still in the box: meaningless once almost everything has been absorbed
+    $("r-energy").textContent = state.energy === null || norm < 0.01 ? "—" : state.energy.toFixed(2);
+    $("r-norm").textContent = `${(100 * norm).toFixed(1)}%`;
     $("r-trans").textContent = state.detector ? `${(100 * Math.max(0, state.detector.transmitted)).toFixed(2)}%` : "—";
+    if (state.particles) $("r-particles").textContent = String(state.particles.dots ? state.particles.dots.length : 0);
     const perf = $("r-perf");
     if (state.msPerStep === null) perf.textContent = "—";
     else perf.innerHTML = `${state.msPerStep.toFixed(1)} ms <small>${Math.round(state.fps ?? 0)} fps</small>`;
@@ -582,8 +804,14 @@
   function runChecks() {
     // strict (1e-6) on the initial state, 1e-3 while running: hard walls always scatter a trace of
     // probability to high k, which is harmless; one message per kind (the worst axis for k_max)
-    const tol = state.solver.t === 0 ? 1e-6 : 1e-3, seen = new Map();
+    // once the box is practically empty (< 1 % left), the relative thresholds would only judge numerical dust
+    const norm = state.solver.norm(), running = state.solver.t > 0;
+    if (running && norm < 0.01) return;
+    const tol = running ? 1e-3 : 1e-6, seen = new Map();
     for (const is of state.solver.diagnose({ tol })) {
+      // while running, high-k content counts in absolute terms (of the launched probability): as the box
+      // empties, a fixed ~1e-5 of splitting dust would otherwise exceed any relative threshold
+      if (running && is.code === "kmax" && is.value * norm < 1e-4) continue;
       if (!seen.has(is.code) || is.value > seen.get(is.code).value) seen.set(is.code, is);
     }
     state.issues = [...seen.values()];
@@ -597,9 +825,15 @@
         limit: (1 / state.solver.dt).toFixed(0), kmax: is.kmax ? is.kmax.toFixed(1) : "",
       }));
     }
+    document.querySelector('[data-tab="data"]').classList.toggle("alert", state.issues.length > 0);
   }
 
-  function defaultHint() { return state.view === "momentum" ? t("hint.momentum") : t(`hint.${state.tool}`); }
+  function defaultHint() {
+    if (state.view === "momentum") return t("hint.momentum");
+    if (state.view === "surface") return t("hint.surface");
+    if (state.particles) return t("hint.particles");
+    return t(`hint.${state.tool}`);
+  }
   function flashHint(text) {
     const h = $("hint");
     h.textContent = text; h.classList.add("flash");
@@ -628,6 +862,7 @@
       const ms = (performance.now() - t0) / state.speed;
       state.msPerStep = state.msPerStep === null ? ms : 0.9 * state.msPerStep + 0.1 * ms;
       if (state.detector) state.detector.record(s);
+      emitParticles();
       state.frame++;
       if (state.frame % 2 === 0) {
         state.samples.push({ t: s.t, norm: s.norm(), trans: state.detector ? state.detector.transmitted : 0 });
@@ -671,7 +906,7 @@
   function updateRecordButton() {
     const b = $("record");
     b.classList.toggle("recording", Boolean(state.recorder));
-    b.querySelector("span").textContent = state.recorder ? t("stopRecording") : t("record");
+    b.title = state.recorder ? t("stopRecording") : t("record");
   }
 
   function shareLink() {
@@ -703,10 +938,19 @@
   }
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
+  function toggleFullscreen() {
+    const w = $("field-wrap");
+    if (document.fullscreenElement) document.exitFullscreen();
+    else if (w.requestFullscreen) w.requestFullscreen().catch(() => {});
+  }
+
   // ---------------------------------------------------------------- controls
   function setRunning(on) {
     state.running = on;
-    $("play").textContent = on ? t("pause") : t("play");
+    const b = $("play");
+    b.classList.toggle("running", on);
+    b.setAttribute("aria-label", on ? t("pause") : t("play"));
+    b.title = `${on ? t("pause") : t("play")} (Space)`;
   }
 
   function syncSliders() {
@@ -731,10 +975,22 @@
   }
 
   function setView(v) {
+    if (v === "surface" && !state.surface) {
+      try { state.surface = new QWaveSurface.Surface3D(field.width); } catch (e) { state.surface = { ok: false }; }
+      if (!state.surface.ok) $("view").querySelector('[data-view="surface"]').hidden = true;
+    }
+    if (v === "surface" && !state.surface.ok) v = "position";
     state.view = v;
     pressed("#view button", "view", v);
     $("hint").textContent = defaultHint();
-    field.style.cursor = v === "momentum" ? "default" : "crosshair";
+    field.style.cursor = v === "surface" ? "grab" : v === "momentum" ? "default" : "crosshair";
+  }
+
+  function selectTab(name) {
+    state.tab = name;
+    document.querySelectorAll("#tabs [data-tab]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === name)));
+    document.querySelectorAll(".tabpanel").forEach((p) => { p.hidden = p.dataset.panel !== name; });
+    if (name === "data") drawChart();
   }
 
   function changeResolution(N) {
@@ -744,30 +1000,42 @@
     state.baseV = sc.base ? state.grid.fill(sc.base) : new Float64Array(state.grid.size);
     rebuildWalls();                                   // the strokes are re-rasterized exactly on the new grid
     if (state.scene === "bec") { loadScene("bec", { strokes: state.strokes }); return; }
+    const particles = Boolean(state.particles);
     buildSolver(false);
     relaunch();
+    if (particles) setParticles(true);
   }
 
   function setLanguage(lang) {
     state.lang = lang;
-    try { localStorage.setItem("qwl-lang", lang); } catch (e) { /* no storage */ }
+    store.set("qwl-lang", lang);
     document.documentElement.lang = lang;
     document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
+    document.querySelectorAll("#cmaps [data-cmap] span").forEach((el) => { el.textContent = t(`cmap.${el.parentElement.dataset.cmap}`); });
     pressed("[data-lang]", "lang", lang);
     $("hint").textContent = defaultHint();
     setRunning(state.running);
     updateRecordButton();
+    renderTour();
     if (state.solver) { runChecks(); updateSceneInfo(); }
   }
 
-  function wireControls() {
-    const scenes = $("scenes");
-    for (const name of ORDER) {
+  function buildColormapButtons() {
+    const box = $("cmaps");
+    for (const name of Object.keys(COLORMAPS)) {
+      const lut = COLORMAPS[name], stops = [0, 64, 128, 192, 255].map((i) => `rgb(${lut[3 * i]},${lut[3 * i + 1]},${lut[3 * i + 2]})`);
       const b = document.createElement("button");
-      b.type = "button"; b.dataset.scene = name; b.dataset.i18n = `scene.${name}`;
-      b.addEventListener("click", () => loadScene(name));
-      scenes.appendChild(b);
+      b.type = "button"; b.dataset.cmap = name;
+      b.innerHTML = `<i style="background:linear-gradient(90deg,${stops.join(",")})"></i><span></span>`;
+      b.addEventListener("click", () => { state.cmap = name; store.set("qwl-cmap", name); pressed("#cmaps button", "cmap", name); });
+      box.appendChild(b);
     }
+    pressed("#cmaps button", "cmap", state.cmap);
+  }
+
+  function wireControls() {
+    buildGallery();
+    buildColormapButtons();
     slider("speed", "speed");
     slider("brush", "brush");
     slider("height", "height");
@@ -779,10 +1047,13 @@
     $("play").addEventListener("click", () => setRunning(!state.running));
     $("relaunch").addEventListener("click", () => relaunch());
     $("measure").addEventListener("click", measure);
+    $("particles").addEventListener("click", () => setParticles(!state.particles));
     $("undo").addEventListener("click", undo);
     $("redo").addEventListener("click", redo);
     $("save").addEventListener("click", saveImage);
     $("share").addEventListener("click", shareLink);
+    $("fullscreen").addEventListener("click", toggleFullscreen);
+    if (!document.fullscreenEnabled) $("fullscreen").hidden = true;
     if (typeof MediaRecorder === "undefined" || !field.captureStream) $("record").hidden = true;
     else $("record").addEventListener("click", toggleRecording);
     $("clear").addEventListener("click", () => pushStroke({ clear: true }));
@@ -801,17 +1072,27 @@
       state.display = b.dataset.display;
       pressed("#display button", "display", state.display);
     }));
+    document.querySelectorAll("#tabs [data-tab]").forEach((b) => b.addEventListener("click", () => selectTab(b.dataset.tab)));
     document.querySelectorAll("[data-lang]").forEach((b) => b.addEventListener("click", () => setLanguage(b.dataset.lang)));
+    $("tour-btn").addEventListener("click", startTour);
+    $("tour-close").addEventListener("click", endTour);
+    $("tour-prev").addEventListener("click", () => showTourStep(Math.max(0, state.tour - 1)));
+    $("tour-next").addEventListener("click", () => (state.tour === TOUR.length - 1 ? endTour() : showTourStep(state.tour + 1)));
     window.addEventListener("keydown", (ev) => {
       if (ev.target.closest("input, select, textarea")) return;
       const mod = ev.ctrlKey || ev.metaKey;
       if (mod && (ev.key === "z" || ev.key === "Z")) { ev.preventDefault(); if (ev.shiftKey) redo(); else undo(); }
       else if (mod && (ev.key === "y" || ev.key === "Y")) { ev.preventDefault(); redo(); }
-      else if (mod) return;
+      else if (mod || ev.altKey) return;
       else if (ev.code === "Space") { ev.preventDefault(); setRunning(!state.running); }
       else if (ev.key === "r" || ev.key === "R") relaunch();
       else if (ev.key === "m" || ev.key === "M") measure();
-      else if (ev.key === "k" || ev.key === "K") setView(state.view === "position" ? "momentum" : "position");
+      else if (ev.key === "p" || ev.key === "P") setParticles(!state.particles);
+      else if (ev.key === "f" || ev.key === "F") toggleFullscreen();
+      else if (ev.key === "v" || ev.key === "V" || ev.key === "k" || ev.key === "K") {
+        const views = VIEWS.filter((v) => !$("view").querySelector(`[data-view="${v}"]`).hidden);
+        setView(views[(views.indexOf(state.view) + 1) % views.length]);
+      } else if (ev.key === "Escape" && state.tour !== null) endTour();
     });
     window.addEventListener("hashchange", loadFromHash);
   }
@@ -821,9 +1102,12 @@
   setGrid(state.N);
   setLanguage(state.lang);
   syncSliders();
-  if (!loadFromHash()) loadScene(state.scene);
+  const fromLink = loadFromHash();
+  if (!fromLink) loadScene(state.scene);
+  if (!fromLink && store.get("qwl-tour") !== "done") startTour();
   requestAnimationFrame(frame);
 
   // debugging handle (browser console): qwl.state, qwl.tick(n) advances n frames even in a hidden tab
-  globalThis.qwl = { state, tick: (n = 1) => { for (let i = 0; i < n; i++) advance(performance.now()); }, measure, undo, redo };
+  globalThis.qwl = { state, tick: (n = 1) => { for (let i = 0; i < n; i++) advance(performance.now()); }, measure, undo, redo,
+                     setView, setParticles, startTour, selectTab };
 })();
